@@ -78,5 +78,21 @@ int main(int argc, char* argv[]){
 
 	printf("\"%s\" is sent successfully!\n");
 
+	socklen_t to_size;
+    to_size = sizeof (servinfo->ai_addr);
+
+	char recipient_buffer[max_len];
+
+	number_bytes = recvfrom(socketfd, recipient_buffer, null_padded_max_len, 0, (struct sockaddr *)servinfo->ai_addr, &to_size);
+    if (number_bytes == -1){
+        printf("Error: failed to receive!\n");
+        exit(errno);
+    }
+
+	recipient_buffer[number_bytes] = '\n';
+	printf("recvied \"%s\"\n", recipient_buffer);
+	
+
+
     return 0;
 }
