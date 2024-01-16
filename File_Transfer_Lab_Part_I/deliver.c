@@ -92,7 +92,12 @@ int main(int argc, char* argv[]){
 	recipient_buffer[number_bytes] = '\n';
 	printf("recvied \"%s\"\n", recipient_buffer);
 	
+	if(strcmp(recipient_buffer, "yes") != 0) {
+        printf("recevied a message other than \"yey\". exit now\n");
+        exit(1);
+    }
 
+	printf("A file transfer can start.\n");
 
     return 0;
 }
