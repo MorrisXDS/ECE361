@@ -48,10 +48,12 @@ int main(int argc, char* argv[]){
 
     printf("server starts receiving ...\n");
     check = recvfrom(socketfd,recipient_buffer, null_padded_max_len, 0, &from_addr, &from_size);
+    
     if (check == -1){
         printf("Error: failed to receive!\n");
         exit(errno);
     }
+
     
     return 0;
 }

@@ -9,6 +9,8 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
+#define max_len 50
+#define null_padded_max_len max_len-1
 
 // This deliver is based on the assumption that the local address 
 // will always be IPv4
@@ -49,6 +51,32 @@ int main(int argc, char* argv[]){
 	
 	// close the file. we're not going to use it in part 1 anyways
 	fclose(transfer_file);
+
+	// cited from page 38 "Beej's Guide to Network Programming", modified
+    struct addrinfo hints, *servinfo, *p; int rv;
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_INET; // IPv4
+    hints.ai_socktype = SOCK_DGRAM;
+    if ((rv = getaddrinfo(argv[1], argv[2], &hints, &servinfo)) != 0) { 
+        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv)); 
+        return 1;
+    }
+    // end of citation
+
+	int socketfd = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol);
+    if (socketfd == -1){
+        printf("Error: failed to create a select socket!\n");
+        exit(errno);
+    }
+
+
+	int number_bytes = sendto(socketfd, ftp, sizeof(ftp), 0, (struct sockaddr *)servinfo->ai_addr, sizeof(struct sockaddr));
+    if (number_bytes == -1){
+        printf("Error: failed to send!\n");
+        exit(errno);
+    }
+
+	printf("\"%s\" is sent successfully!\n");
 
     return 0;
 }
