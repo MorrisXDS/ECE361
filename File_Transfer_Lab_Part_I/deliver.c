@@ -91,19 +91,8 @@ int main(int argc, char* argv[]){
 
 	recipient_buffer[number_bytes] = '\n';
 	printf("recvied \"%s\"\n", recipient_buffer);
+	
 
-	if(strcmp(recipient_buffer, "yes") != 0) {
-		printf("recevied a message other than \"yey\". exit now\n");
-		exit(1);
-	}
-
-	number_bytes = sendto(socketfd, "A file transfer can start.", sizeof( "A file transfer can start."),
-						 0, (struct sockaddr *)servinfo->ai_addr, sizeof(struct sockaddr));
-	printf("message is successfully sent!\n");
-    if (number_bytes == -1){
-        printf("Error: failed to send!\n");
-        exit(errno);
-    }
 
     return 0;
 }
