@@ -28,6 +28,9 @@
 #define QU_ACK 12
 #define INVALID (-1)
 
+//client message types
+#define LOGOUT 0
+
 //Define Errors
 #define FD_ERROR (-1)
 #define BIND_ERROR (-1)

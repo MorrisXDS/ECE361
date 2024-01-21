@@ -139,6 +139,12 @@ void* connection_handler(void* accept_fd){
             int login_status = verify_login(msg.source, msg.data);
             generate_login_response(login_status, &msg, data, ACC_BUFFER_SIZE);
         }
+        if(msg.type == EXIT){
+            close(socekt_fd);
+            printf("%s closed connection\n", msg.source);
+            puts("server ending communication\n");
+            break;
+        }
 
         puts("sending a message");
         bytes_sent = send(socekt_fd, data, ACC_BUFFER_SIZE, 0);

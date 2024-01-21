@@ -4,8 +4,9 @@
 #include <pthread.h>
 
 int connection_status = 0;
+char username[MAX_NAME];
 
-int main(int argc, char* argv[]){
+int main(){
     char* terminal_buffer = malloc(sizeof(char) * terminal_buffer_size);
     memset(terminal_buffer, 0, terminal_buffer_size);
     size_t buffer_size = terminal_buffer_size-1;
@@ -31,11 +32,34 @@ int main(int argc, char* argv[]){
         argument_count++;
     }
 
-    int command = check_command(arguments[0]);
-    if (command == -1) {
+    memset(username, 0, MAX_NAME);
+    strcpy(username, arguments[1]);
+
+    unsigned int type;
+    command_to_type(arguments[0],&type);
+
+    if (type == INVALID){
         printf("invalid command\n");
         free(terminal_buffer);
         exit(1);
+    }
+    if(type == LOGIN){
+        if (argument_count != 5){
+            printf("invalid number of arguments\n");
+            free(terminal_buffer);
+            exit(1);
+        }
+    }
+    else if(type == EXIT){
+        if (argument_count != 1){
+            printf("invalid number of arguments\n");
+            free(terminal_buffer);
+            exit(1);
+        }
+    }
+    else if(connection_status == 0){
+        printf("Please connect to the server first!\n");
+        exit(0);
     }
 
     //print all arguments out
@@ -97,19 +121,16 @@ int main(int argc, char* argv[]){
     printf("Response Type is: %d\n", msg.type);
     printf("============================================\n");
     decode_server_response(msg.type, (char *)msg.data);
-
+    pthread_t thread;
+    pthread_create(&thread, NULL, response_handler, (void *) &action_fd);
     while(1){
         memset(terminal_buffer, 0, terminal_buffer_size);
-        for (int i = 0; i < 5; i++) {
-            memset(arguments[i], 0, sizeof(arguments[i]));
-        }
         buffer_size = terminal_buffer_size-1;
         bytes_read = getline(&terminal_buffer, &(buffer_size), stdin);
         if (bytes_read == -1){
             perror("failed to read from stdin");
             exit(errno);
         }
-        printf("%s", terminal_buffer);
 
         char* token = strtok(terminal_buffer, " \0");
 
@@ -121,53 +142,60 @@ int main(int argc, char* argv[]){
                 free(terminal_buffer);
                 exit(1);
             };
+            printf("token %d printing\n",argument_count);
+            puts(token);
             strcpy(arguments[argument_count], token);
-            token = strtok(NULL, " \0");
+            token = strtok(NULL, " ");
             argument_count++;
         }
 
-        command = check_command(arguments[0]);
-        if (command == -1) {
+        puts(arguments[0]);
+
+        command_to_type(arguments[0],&type);
+        if (type == INVALID){
             printf("invalid command\n");
-            free(terminal_buffer);
-            exit(1);
+            continue;
         }
-        else if( command != 0 && connection_status == 0){
+        if(type == EXIT){
+            if (argument_count != 1){
+                printf("invalid number of arguments\n");
+                continue;
+            }
+            puts("sending message to server\n");
+            // printf("buffer content: %s\n", (char *)buffer);
+            msg.type = EXIT;
+            msg.size = 0;
+            strcpy((char *)msg.source, username);
+            memset(buffer, 0, ACC_BUFFER_SIZE);
+            message_to_buffer(&msg, buffer);
+            bytes_sent = send(action_fd, buffer, ACC_BUFFER_SIZE, 0);
+            if(connection_status != 0) close(action_fd);
+            freeaddrinfo(servinfo);
+            free(terminal_buffer);
+            terminal_buffer = NULL;
+            puts("exiting the program\n");
+            puts("goodbye!\n");
+            break;
+        }
+        if(connection_status == 0){
             printf("Please connect to the server first!\n");
             continue;
         }
-
-        command_to_type(commands[0], &msg);
-        if (msg.type == 0){
-            printf("you're logging out of the server\n");
+        if (type == LOGOUT){
+            if (argument_count != 1){
+                printf("invalid number of arguments\n");
+                continue;
+            }
+            printf("closing connection\n");
             close(action_fd);
             connection_status = 0;
             printf("connection closed\n");
             continue;
         }
 
-        printf("sending message to server\n");
-        // printf("buffer content: %s\n", (char *)buffer);
-        bytes_sent = send(action_fd, buffer, ACC_BUFFER_SIZE, 0);
-        error_check((int) bytes_sent, SEND_ERROR,
-                    "failed to send the message to the server");
-
-        memset(buffer, 0, ACC_BUFFER_SIZE);
-        memset(&msg, 0, sizeof(message_t));
-        byte_received = recv(action_fd, buffer, ACC_BUFFER_SIZE, 0);
-        error_check((int) byte_received, RECEIVE_ERROR,
-                    "failed to receive the message from the server");
-        buffer_to_message(&msg, buffer);
-
-        printf("Response Type is: %d\n", msg.type);
-        decode_server_response(msg.type, (char *)msg.data);
     }
 
-    //close(action_fd);
-    freeaddrinfo(servinfo);
-    free(terminal_buffer);
-    terminal_buffer = NULL;
-
+    pthread_exit(NULL);
     return 1;
 }
 
@@ -190,39 +218,47 @@ void* response_handler(void* arg){
         memset(buffer, 0, ACC_BUFFER_SIZE);
         memset(&msg, 0, sizeof(message_t));
         byte_received = recv(fd, buffer, ACC_BUFFER_SIZE, 0);
+        if (byte_received == 0){
+            printf("server closed the connection\n");
+            close(fd);
+            connection_status = 0;
+            break;
+        }
         error_check((int) byte_received, RECEIVE_ERROR,
                     "failed to receive the message from the server");
         buffer_to_message(&msg, buffer);
         printf("Response Type is: %d\n", msg.type);
         decode_server_response(msg.type, (char *)msg.data);
     }
+    return NULL;
 }
 
-void command_to_type(char * command, message_t * msg){
-    if (strcmp(command, "/login") == 0){
-        msg->type = LOGIN;
-    } else if (strcmp(command, "/logout") == 0){
-        msg->type = 0;
-    } else if (strcmp(command, "/joinsession") == 0){
-        msg->type = JOIN;
-    } else if (strcmp(command, "/leavesession") == 0){
-        msg->type = LEAVE_SESS;
-    } else if (strcmp(command, "/createsession") == 0){
-        msg->type = NEW_SESS;
-    } else if (strcmp(command, "/list") == 0){
-        msg->type = QUERY;
-    } else if (strcmp(command, "/quit") == 0){
-        msg->type = EXIT;
+void command_to_type(char * command, unsigned int * type) {
+    if (strcmp(command, "/login") == 0) {
+        *type = LOGIN;
+    } else if (strcmp(command, "/logout\n") == 0) {
+        *type = LOGOUT;
+    } else if (strcmp(command, "/joinsession") == 0) {
+        *type = JOIN;
+    } else if (strcmp(command, "/leavesession\n") == 0) {
+        *type = LEAVE_SESS;
+    } else if (strcmp(command, "/createsession") == 0) {
+        *type = NEW_SESS;
+    } else if (strcmp(command, "/list\n") == 0) {
+        *type = QUERY;
+    } else if (strcmp(command, "/quit\n") == 0) {
+        *type = EXIT;
     } else {
-        msg->type = INVALID;
+        printf("invalid command\n");
+        *type = INVALID;
     }
 //    } else if (strcmp(command, "/invite") == 0){
-//        msg->type = INVITE;
+//        *type = INVITE;
 //    } else if (strcmp(command, "/accept") == 0){
-//        msg->type = ACCEPT;
+//        *type = ACCEPT;
 //    } else if (strcmp(command, "/decline") == 0){
-//        msg->type = DECLINE;
+//        *type = DECLINE;
 //    } else if (strcmp(command, "/message") == 0){
-//        msg->type = MESSAGE;
+//        *type = MESSAGE;
 //    }
-}
+};

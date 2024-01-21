@@ -17,6 +17,6 @@ char commands[command_number][20] = {"/login",
 
 int check_command(char * command);
 void* response_handler(void* arg);
-void command_to_type(char * command, message_t * msg);
+void command_to_type(char * command, unsigned int* type);
 
 #endif
