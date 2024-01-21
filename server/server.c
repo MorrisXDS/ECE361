@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include "../message/message.h"
 #include "server.h"
 
 struct user user_list[LIST_CAPACITY];
@@ -58,6 +57,7 @@ int main(int argc, char* argv[]){
         if (thread_count == THREAD_CAPACITY) {
             break;
         }
+        puts("accepting connections...\n");
         int accept_fd = accept(listen_fd, (struct sockaddr *)&their_addr, &addr_size);
         if (accept_fd == -1) {
             if (errno == EWOULDBLOCK || errno == EAGAIN) {
@@ -113,28 +113,31 @@ void* connection_handler(void* accept_fd){
 
     unsigned char data[ACC_BUFFER_SIZE];
 
-
     while(1){
         ssize_t bytes_recv = -1;
         ssize_t bytes_sent = -1;
-        puts("receiving a message");
+        memset(data, 0, ACC_BUFFER_SIZE);
+        puts("waiting for a message");
         bytes_recv = recv(socekt_fd, data, ACC_BUFFER_SIZE, 0);
         printf("bytes received: %zd\n",bytes_recv);
+        if (bytes_recv == 0) {
+            puts("client disconnected");
+            puts("closing the socket");
+            close(socekt_fd);
+            puts("exiting the thread");
+            break;
+        }
         int check = error_check((int)bytes_recv, RECEIVE_ERROR,
                                 "failed to receive the message");
         if (!check) break;
 
-        struct message msg;
+        message_t msg;
         buffer_to_message(&msg, data);
 
 
         if(msg.type == LOGIN) {
             int login_status = verify_login(msg.source, msg.data);
             generate_login_response(login_status, &msg, data, ACC_BUFFER_SIZE);
-        }
-        if(msg.type == EXIT){
-            close(socekt_fd);
-            break;
         }
 
         puts("sending a message");
@@ -146,10 +149,11 @@ void* connection_handler(void* accept_fd){
     }
 
     //pthread_exit(NULL);
+    puts("exited the thread");
     return NULL;
 }
 
-void generate_login_response(int login_status, struct message* msg, unsigned char* buffer, int buffer_size){
+void generate_login_response(int login_status, message_t* msg, unsigned char* buffer, int buffer_size){
     memset(buffer, 0, buffer_size);
     memset(msg->data, 0, MAX_DATA);
 

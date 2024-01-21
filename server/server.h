@@ -1,6 +1,6 @@
 #ifndef SERVER_H
 #define SERVER_H
-
+#include "../message/message.h"
 
 
 //TYPES
@@ -24,7 +24,7 @@ struct user {
 int set_user_list();
 void* connection_handler(void * accept_fd);
 int verify_login(unsigned char * username, unsigned char * password);
-void generate_login_response(int login_status, struct message* msg,
+void generate_login_response(int login_status, message_t* msg,
         unsigned char* buffer ,int buffer_size);
 
 #endif

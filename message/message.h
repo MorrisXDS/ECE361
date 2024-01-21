@@ -26,6 +26,7 @@
 #define MESSAGE 10
 #define QUERY 11
 #define QU_ACK 12
+#define INVALID (-1)
 
 //Define Errors
 #define FD_ERROR (-1)
@@ -47,6 +48,7 @@
 #define MAX_DATA 1000
 #define ACTUAL_NAME_LENGTH 16
 #define ACC_BUFFER_SIZE 1500
+#define message_t struct message
 
 struct message {
     unsigned int type;
@@ -55,8 +57,8 @@ struct message {
     unsigned char data[MAX_DATA];
 };
 
-void message_to_buffer(struct message* msg, unsigned char* buffer);
-void buffer_to_message(struct message* msg, const unsigned char* buffer);
+void message_to_buffer(message_t* msg, unsigned char* buffer);
+void buffer_to_message(message_t* msg, const unsigned char* buffer);
 int error_check(int condition, int check, const char *error_message);
 void decode_server_response(unsigned int type, char* response);
 

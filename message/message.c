@@ -1,15 +1,14 @@
 #include "message.h"
 
-void message_to_buffer(struct message* msg,  unsigned char* buffer){
+void message_to_buffer(message_t* msg,  unsigned char* buffer){
     sprintf((char *)buffer, "%d:%d:%s:", msg->type, msg->size, msg->source);
     unsigned long size = strlen((char *)buffer);
     for (unsigned int index = 0; index < msg->size; ++index) {
         buffer[size+index] =  msg->data[index];
     }
-    // puts((char *)buffer);
 };
 
-void buffer_to_message(struct message* msg, const unsigned char* buffer){
+void buffer_to_message(message_t* msg, const unsigned char* buffer){
     unsigned char content[12];
     int count = 0;
     int index = 0;
@@ -19,7 +18,6 @@ void buffer_to_message(struct message* msg, const unsigned char* buffer){
         index++;
     }
     content[index] = '\0';
-    // puts((char *)content);
     msg->type = atoi((char *)content);
     count++;
 
@@ -30,7 +28,6 @@ void buffer_to_message(struct message* msg, const unsigned char* buffer){
         index++;
     }
     content[index] = '\0';
-    // puts((char *)content);
     msg->size = atoi((char *)content);
     count++;
 
@@ -41,13 +38,11 @@ void buffer_to_message(struct message* msg, const unsigned char* buffer){
         index++;
     }
     msg->source[index] = '\0';
-    // puts((char *) msg->source);
     count++;
 
     for (int i = 0; i < msg->size; ++i) {
         msg->data[i] = buffer[count+i];
     }
-    puts((char *)msg->data);
 };
 
 int error_check(int condition, int check, const char *error_message){
