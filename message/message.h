@@ -57,7 +57,7 @@ struct message {
 
 void message_to_buffer(struct message* msg, unsigned char* buffer);
 void buffer_to_message(struct message* msg, const unsigned char* buffer);
-void error_check(int condition, int check, const char *error_message);
+int error_check(int condition, int check, const char *error_message);
 void decode_server_response(unsigned int type, char* response);
 
 #endif

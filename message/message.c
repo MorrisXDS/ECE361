@@ -6,7 +6,7 @@ void message_to_buffer(struct message* msg,  unsigned char* buffer){
     for (unsigned int index = 0; index < msg->size; ++index) {
         buffer[size+index] =  msg->data[index];
     }
-    puts((char *)buffer);
+    // puts((char *)buffer);
 };
 
 void buffer_to_message(struct message* msg, const unsigned char* buffer){
@@ -19,7 +19,7 @@ void buffer_to_message(struct message* msg, const unsigned char* buffer){
         index++;
     }
     content[index] = '\0';
-    puts((char *)content);
+    // puts((char *)content);
     msg->type = atoi((char *)content);
     count++;
 
@@ -30,7 +30,7 @@ void buffer_to_message(struct message* msg, const unsigned char* buffer){
         index++;
     }
     content[index] = '\0';
-    puts((char *)content);
+    // puts((char *)content);
     msg->size = atoi((char *)content);
     count++;
 
@@ -41,7 +41,7 @@ void buffer_to_message(struct message* msg, const unsigned char* buffer){
         index++;
     }
     msg->source[index] = '\0';
-    puts((char *) msg->source);
+    // puts((char *) msg->source);
     count++;
 
     for (int i = 0; i < msg->size; ++i) {
@@ -50,10 +50,10 @@ void buffer_to_message(struct message* msg, const unsigned char* buffer){
     puts((char *)msg->data);
 };
 
-void error_check(int condition, int check, const char *error_message){
-    if (condition != check) return;
+int error_check(int condition, int check, const char *error_message){
+    if (condition != check) return 1;
     perror(error_message);
-    exit(errno);
+    return 0;
 };
 
 void decode_server_response(unsigned int type, char* response){

@@ -15,6 +15,6 @@ char commands[command_number][20] = {"/login",
                         "/quit"};
 
 int check_command(char * command);
-
+void* response_handler(void* arg);
 
 #endif

@@ -10,6 +10,7 @@
 #define CONNECTION_CAPACITY 10
 #define LIST_CAPACITY 10
 #define MAX_PASSWORD_LENGTH 20
+#define THREAD_CAPACITY 10
 
 //global variables
 char login_error_types[2][20] = {"Username not found", "Incorrect password"};
@@ -21,7 +22,9 @@ struct user {
 };
 
 int set_user_list();
-
+void* connection_handler(void * accept_fd);
 int verify_login(unsigned char * username, unsigned char * password);
+void generate_login_response(int login_status, struct message* msg,
+        unsigned char* buffer ,int buffer_size);
 
 #endif
