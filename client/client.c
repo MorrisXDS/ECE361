@@ -8,6 +8,7 @@ char username[MAX_NAME];
 char arguments[5][20];
 int arguments_size = 0;
 char message[MAX_DATA];
+int thread_used = 0;
 
 int main(){
     char* terminal_buffer = malloc(sizeof(char) * terminal_buffer_size);
@@ -16,9 +17,14 @@ int main(){
     ssize_t bytes_sent;
     unsigned char buffer[ACC_BUFFER_SIZE];
 
-    pthread_t thread;
-    pthread_create(&thread, NULL, response_handler, (void *) &action_fd);
+    pthread_t thread[thread_capacity];
+    pthread_create(&thread[0], NULL, response_handler, (void *) &action_fd);
+    thread_used++;
     while(1){
+        if (thread_used == thread_capacity){
+            puts("You've logged out too many times, please restart the program");
+            break;
+        }
         take_terminal_input(&terminal_buffer);
 
         unsigned int type;
@@ -41,6 +47,8 @@ int main(){
             connect_to_server(arguments[3], arguments[4], &action_fd);
             fill_message(&msg, LOGIN, sizeof(arguments[2]), arguments[1], arguments[2]);
             send_a_message(&action_fd, &msg);
+            pthread_create(&thread[0], NULL, response_handler, (void *) &action_fd);
+            thread_used++;
             continue;
         }
         if(type == EXIT){
@@ -133,20 +141,21 @@ int main(){
 }
 
 void* response_handler(void* arg){
-    while(server_connection_status == 0);
+    while (server_connection_status == 0);
     int fd = *(int*) arg;
     unsigned char buffer[ACC_BUFFER_SIZE];
     ssize_t byte_received;
     message_t msg;
-    while (1){
+    while (server_connection_status != 0){
         memset(buffer, 0, ACC_BUFFER_SIZE);
         memset(&msg, 0, sizeof(message_t));
+
         byte_received = recv(fd, buffer, ACC_BUFFER_SIZE, 0);
         if (byte_received == 0){
             printf("server closed the connection\n");
             close(fd);
             server_connection_status = 0;
-            break;
+            continue;
         }
 
         if(!error_check((int) byte_received, RECEIVE_ERROR,
@@ -169,6 +178,7 @@ void* response_handler(void* arg){
         }
 
     }
+    printf("thread exiting\n");
     return NULL;
 }
 
@@ -231,6 +241,7 @@ void connect_to_server(char * ip_address, char * port, int * socket_fd){
     int condition = connect(*socket_fd, servinfo->ai_addr, servinfo->ai_addrlen);
     if(!error_check(condition, CONNECT_ERROR,
                     "failed to connect to the server")) return;
+    printf("connected to the server\n");
     freeaddrinfo(servinfo);
     server_connection_status = 1;
 }

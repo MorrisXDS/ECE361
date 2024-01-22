@@ -33,7 +33,7 @@ struct user {
     unsigned char status;
     char session_id[MAX_SESSION_NAME];
     char ip_address[INET_ADDRSTRLEN];
-    char port[MAX_PORT_LENGTH];
+    unsigned int port;
     int socket_fd;
 };
 

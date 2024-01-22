@@ -2,9 +2,10 @@
 #define CLIENT_H
 #include "../message/message.h"
 
-#define terminal_buffer_size 999
+#define terminal_buffer_size 128
 #define command_number 7
 #define message_id 8
+#define thread_capacity 20
 
 //global variables
 char commands[command_number][20] = {"/login",

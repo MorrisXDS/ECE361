@@ -84,15 +84,6 @@ int main(int argc, char* argv[]){
                         "failed to create a socket");
     if (!check) exit(1);
 
-    int condition = bind(listen_fd, servinfo->ai_addr, servinfo->ai_addrlen);
-    check = error_check(condition, BIND_ERROR,
-                        "failed to bind the socket to the specified address");
-    if (!check) exit(1);
-
-    condition = listen(listen_fd, CONNECTION_CAPACITY);
-    check = error_check(condition, LISTEN_ERROR,
-                        "failed to listen to the port");
-    if (!check) exit(1);
 
     // This code is cited from Page 26 of Beej's Guide to Network Programming.
     // It sets the option on the socket to allow the reuse of the local address in case
@@ -105,6 +96,16 @@ int main(int argc, char* argv[]){
         exit(1); // Exit the program with an error code.
     }
     // end of citation
+
+    int condition = bind(listen_fd, servinfo->ai_addr, servinfo->ai_addrlen);
+    check = error_check(condition, BIND_ERROR,
+                        "failed to bind the socket to the specified address");
+    if (!check) exit(1);
+
+    condition = listen(listen_fd, CONNECTION_CAPACITY);
+    check = error_check(condition, LISTEN_ERROR,
+                        "failed to listen to the port");
+    if (!check) exit(1);
 
     addr_size = sizeof(their_addr);
 
@@ -131,6 +132,7 @@ int main(int argc, char* argv[]){
     }
     //wait for other threads to finish before exiting
     freeaddrinfo(servinfo);
+    session_list_remove_all(list);
     pthread_exit(NULL);
     return 1;
 }
@@ -215,6 +217,17 @@ void* connection_handler(void* accept_fd){
                 int index = return_user_index(name);
                 user_list[index].socket_fd = socekt_fd;
                 user_list[index].status = ONLINE;
+                struct sockaddr_in client_addr;
+                socklen_t addr_len = sizeof(client_addr);
+
+                if (getpeername(socekt_fd, (struct sockaddr*)&client_addr, &addr_len) == -1) {
+                    perror("getpeername");
+                    exit(EXIT_FAILURE);
+                }
+                struct sockaddr_in *s = (struct sockaddr_in *)&client_addr;
+                user_list[index].port = ntohs(s->sin_port);
+                inet_ntop(AF_INET, &s->sin_addr, user_list[index].ip_address,
+                          sizeof (user_list[index].ip_address));
             }
             pthread_mutex_unlock(&login_mutex);
             generate_login_response(authentication,name, &msg, data, ACC_BUFFER_SIZE);
@@ -229,13 +242,15 @@ void* connection_handler(void* accept_fd){
                 session_status_t * session_to_leave = session_list_find(list, user_list[index].session_id);
                 pthread_mutex_lock(&leave_mutex);
                 session_to_leave->user_count--;
-                printf("there is %d people in the session", session_to_leave->user_count);
+                printf("there is %d people still in the session", session_to_leave->user_count);
                 if (session_to_leave->user_count == 0){
                     printf("session #%s taken down\n", session_to_leave->session_id);
                     session_list_remove(list, session_to_leave);
                 }
-                strcpy(user_list[index].session_id, NOT_IN_SESSION);
                 pthread_mutex_unlock(&leave_mutex);
+                strcpy(user_list[index].session_id, NOT_IN_SESSION);
+                memset(user_list[index].ip_address, 0, INET_ADDRSTRLEN);
+                memset(&user_list[index].port, 0, sizeof (user_list[index].port));
             }
             break;
         }
@@ -336,6 +351,7 @@ void* connection_handler(void* accept_fd){
         message_to_buffer(&msg, data);
         bytes_sent = send(socekt_fd, data, ACC_BUFFER_SIZE, 0);
         printf("bytes sent: %zd\n",bytes_sent);
+        printf("the message is %s\n", msg.data);
         check = error_check((int) bytes_sent, SEND_ERROR,
                             "failed to send the message");
         if (authentication != SUCCESS_LOGIN) break;
