@@ -81,7 +81,7 @@ void decode_server_response(unsigned int type, char* response){
             printf("Session Starts!\n===============================\n");
             break;
         case JN_NAK:
-            printf("Session not created, %s\n", response);
+            printf("Session not created, %s", response);
             break;
         case QU_ACK:
             printf("%s", response);
@@ -93,7 +93,7 @@ void decode_server_response(unsigned int type, char* response){
             printf("You are registered! Welcome!\n");
             break;
         case RG_NAK:
-            printf("Registration failed. %s\n", response);
+            printf("Registration failed. %s", response);
             break;
         case EMPTY:
             break;

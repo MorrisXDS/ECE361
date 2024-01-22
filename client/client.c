@@ -80,6 +80,10 @@ int main(){
                 printf("invalid number of arguments\n");
                 continue;
             }
+            if(server_connection_status == 1){
+                printf("Registration Not available after log-in!\n");
+                continue;
+            }
             connect_to_server(arguments[3], arguments[4], &action_fd);
             fill_message(&msg, REGISTER, sizeof(arguments[2]), arguments[1], arguments[2]);
             send_a_message(&action_fd, &msg);
@@ -180,10 +184,10 @@ void* response_handler(void* arg){
             close(fd);
             server_connection_status = 0;
         }
-
         if (msg.type == RG_ACK){
             memset(username, 0, MAX_NAME);
             strcpy(username, (char *)msg.source);
+            server_connection_status = 1;
             continue;
         }
         if (msg.type == MESSAGE){
@@ -192,10 +196,11 @@ void* response_handler(void* arg){
             decode_server_response(msg.type, display);
             continue;
         }
-        else if(msg.type == RG_ACK) {
-            server_connection_status = 1;
+        else if(msg.type == RG_NAK) {
+            server_connection_status = 0;
             decode_server_response(msg.type, (char *)msg.data);
         }
+        decode_server_response(msg.type, (char *)msg.data);
         
     }
     return NULL;
