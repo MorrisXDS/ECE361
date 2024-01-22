@@ -68,32 +68,8 @@ int main(){
     printf("port: %d\n", port);
     sprintf(arguments[4], "%d", port);
 
-    //cited from page 21 of Beej's Guide to Network Programming, with modifications
-    int status;
-    struct addrinfo hints;
-    struct addrinfo *servinfo; // will point to the results
-
-    memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_UNSPEC; // don't care IPv4 or IPv6
-    hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
-
-    status = getaddrinfo(arguments[3], arguments[4], &hints, &servinfo);
-    if (status != 0) {
-        fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
-        exit(1);
-    }
-    //end of citation
-
-
-    int action_fd = socket(servinfo->ai_family,
-                           servinfo->ai_socktype, servinfo->ai_protocol);
-    error_check(action_fd, FD_ERROR,
-                "failed to create a socket");
-
-    int condition = connect(action_fd, servinfo->ai_addr, servinfo->ai_addrlen);
-    error_check(condition, CONNECT_ERROR,
-                "failed to connect to the server");
-    connection_status = 1;
+    int action_fd;
+    connect_to_server(arguments[3], arguments[4], &action_fd);
 
     unsigned char buffer[ACC_BUFFER_SIZE];
     message_t msg;;
@@ -105,15 +81,15 @@ int main(){
     printf("message being sent to server: %s\n", (char *)msg.data);
     printf("sending message to server\n");
     bytes_sent = send(action_fd, buffer, ACC_BUFFER_SIZE, 0);
-    error_check((int) bytes_sent, SEND_ERROR,
-                "failed to send the message to the server");
+    if(!error_check((int) bytes_sent, SEND_ERROR,
+                "failed to send the message to the server")) return 1;
 
     ssize_t byte_received;
     memset(buffer, 0, ACC_BUFFER_SIZE);
     memset(&msg, 0, sizeof(message_t));
     byte_received = recv(action_fd, buffer, ACC_BUFFER_SIZE, 0);
-    error_check((int) byte_received, RECEIVE_ERROR,
-                "failed to receive the message from the server");
+    if(!error_check((int) byte_received, RECEIVE_ERROR,
+                "failed to receive the message from the server")) return 1;
     buffer_to_message(&msg, buffer);
 
     printf("Response Type is: %d\n", msg.type);
@@ -165,7 +141,6 @@ int main(){
             message_to_buffer(&msg, buffer);
             bytes_sent = send(action_fd, buffer, ACC_BUFFER_SIZE, 0);
             if(connection_status != 0) close(action_fd);
-            freeaddrinfo(servinfo);
             free(terminal_buffer);
             terminal_buffer = NULL;
             puts("exiting the program\n");
@@ -224,8 +199,8 @@ void* response_handler(void* arg){
             connection_status = 0;
             break;
         }
-        error_check((int) byte_received, RECEIVE_ERROR,
-                    "failed to receive the message from the server");
+        if(!error_check((int) byte_received, RECEIVE_ERROR,
+                    "failed to receive the message from the server")) return NULL;
         buffer_to_message(&msg, buffer);
         printf("Response Type is: %d\n", msg.type);
         printf("Server Message: %s\n", (char *)msg.data);
@@ -264,3 +239,36 @@ void command_to_type(char * command, unsigned int * type) {
 //        *type = MESSAGE;
 //    }
 };
+
+void connect_to_server(char * ip_address, char * port, int * socket_fd){
+    //cited from page 21 of Beej's Guide to Network Programming, with modifications
+    int status;
+    struct addrinfo hints;
+    struct addrinfo *servinfo;
+
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_INET; // IPv4
+    hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
+
+    if (!strcmp(ip_address,"128.100.13.252")) printf("ip address is correct\n");
+    if (!strcmp(port,"5000")) printf("port is correct\n");
+
+    status = getaddrinfo(ip_address, port, &hints, &servinfo);
+    if (status != 0) {
+        fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
+        exit(1);
+    }
+    //end of citation
+
+
+    *socket_fd = socket(servinfo->ai_family,
+                           servinfo->ai_socktype, servinfo->ai_protocol);
+    if(!error_check(*socket_fd, FD_ERROR,
+                    "failed to create a socket")) return;
+
+    int condition = connect(*socket_fd, servinfo->ai_addr, servinfo->ai_addrlen);
+    if(!error_check(condition, CONNECT_ERROR,
+                    "failed to connect to the server")) return;
+    freeaddrinfo(servinfo);
+    connection_status = 1;
+}

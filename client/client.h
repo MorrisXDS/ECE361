@@ -16,6 +16,7 @@ char commands[command_number][20] = {"/login",
                         "/quit"};
 
 int check_command(char * command);
+void connect_to_server(char * ip_address, char * port, int * socket_fd);
 void* response_handler(void* arg);
 void command_to_type(char * command, unsigned int* type);
 
