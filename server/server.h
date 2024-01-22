@@ -5,6 +5,8 @@
 
 //TYPES
 #define SUCCESS_LOGIN 2
+#define USERNAME_ERROR 0
+#define PASSWORD_ERROR 1
 
 //Functional
 #define CONNECTION_CAPACITY 10
@@ -24,7 +26,7 @@ struct user {
 int set_user_list();
 void* connection_handler(void * accept_fd);
 int verify_login(unsigned char * username, unsigned char * password);
-void generate_login_response(int login_status, message_t* msg,
+void generate_login_response(int login_status, char * username, message_t* msg,
         unsigned char* buffer ,int buffer_size);
 
 #endif

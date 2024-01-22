@@ -40,10 +40,7 @@
 #define RECEIVE_ERROR (-1)
 #define SEND_ERROR (-1)
 #define SETUP_ERROR (-1)
-#define LOGIN_ERROR (-1)
 #define GETLINE_ERROR (-1)
-#define USERNAME_ERROR 0
-#define PASSWORD_ERROR 1
 #define COMMAND_NOT_FOUND -1
 
 //Struct Macros
@@ -60,6 +57,8 @@ struct message {
     unsigned char data[MAX_DATA];
 };
 
+//Function Prototypes
+void fill_message(message_t* msg, unsigned int type, unsigned int size, char* source, char* data);
 void message_to_buffer(message_t* msg, unsigned char* buffer);
 void buffer_to_message(message_t* msg, const unsigned char* buffer);
 int error_check(int condition, int check, const char *error_message);

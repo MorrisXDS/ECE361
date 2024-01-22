@@ -96,11 +96,9 @@ int main(){
     connection_status = 1;
 
     unsigned char buffer[ACC_BUFFER_SIZE];
-    message_t msg;
-    msg.type = LOGIN;
-    strcpy((char *)msg.data, arguments[2]);
-    msg.size = strlen((char *)msg.data);
-    strcpy((char *)msg.source, arguments[1]);
+    message_t msg;;
+    fill_message(&msg,LOGIN,strlen(arguments[2]),
+                 arguments[1], arguments[2]);
     message_to_buffer(&msg, buffer);
     ssize_t bytes_sent;
     printf("============================================\n");
@@ -162,10 +160,7 @@ int main(){
                 continue;
             }
             puts("sending message to server\n");
-            // printf("buffer content: %s\n", (char *)buffer);
-            msg.type = EXIT;
-            msg.size = 0;
-            strcpy((char *)msg.source, username);
+            fill_message(&msg, EXIT, 0, username, NULL);
             memset(buffer, 0, ACC_BUFFER_SIZE);
             message_to_buffer(&msg, buffer);
             bytes_sent = send(action_fd, buffer, ACC_BUFFER_SIZE, 0);
@@ -186,6 +181,11 @@ int main(){
                 printf("invalid number of arguments\n");
                 continue;
             }
+            puts("sending message to server\n");
+            fill_message(&msg, EXIT, 0, username, NULL);
+            memset(buffer, 0, ACC_BUFFER_SIZE);
+            message_to_buffer(&msg, buffer);
+            bytes_sent = send(action_fd, buffer, ACC_BUFFER_SIZE, 0);
             printf("closing connection\n");
             close(action_fd);
             connection_status = 0;
@@ -228,6 +228,8 @@ void* response_handler(void* arg){
                     "failed to receive the message from the server");
         buffer_to_message(&msg, buffer);
         printf("Response Type is: %d\n", msg.type);
+        printf("Server Message: %s\n", (char *)msg.data);
+        printf("============================================\n");
         decode_server_response(msg.type, (char *)msg.data);
     }
     return NULL;

@@ -101,19 +101,20 @@ int verify_login(unsigned char * username, unsigned char * password){
             if (strcmp((char *)user_list[i].password, (char *)password) == 0){
                 return SUCCESS_LOGIN;
             } else {
-                return LOGIN_ERROR;
+                return PASSWORD_ERROR;
             }
         }
     }
-    return LOGIN_ERROR;
+    return USERNAME_ERROR;
 }
 
 void* connection_handler(void* accept_fd){
     int socekt_fd = *(int *)accept_fd;
-
+    int login_status = 0;
     unsigned char data[ACC_BUFFER_SIZE];
 
     while(1){
+        char name[MAX_NAME];
         ssize_t bytes_recv = -1;
         ssize_t bytes_sent = -1;
         memset(data, 0, ACC_BUFFER_SIZE);
@@ -123,7 +124,6 @@ void* connection_handler(void* accept_fd){
         if (bytes_recv == 0) {
             puts("client disconnected");
             puts("closing the socket");
-            close(socekt_fd);
             puts("exiting the thread");
             break;
         }
@@ -133,11 +133,15 @@ void* connection_handler(void* accept_fd){
 
         message_t msg;
         buffer_to_message(&msg, data);
+        strcpy(name, (char *)msg.source);
 
 
         if(msg.type == LOGIN) {
-            int login_status = verify_login(msg.source, msg.data);
-            generate_login_response(login_status, &msg, data, ACC_BUFFER_SIZE);
+            login_status = verify_login(msg.source, msg.data);
+            if (login_status != SUCCESS_LOGIN) {
+
+            }
+            generate_login_response(login_status,name, &msg, data, ACC_BUFFER_SIZE);
         }
         if(msg.type == EXIT){
             close(socekt_fd);
@@ -151,15 +155,17 @@ void* connection_handler(void* accept_fd){
         printf("bytes sent: %zd\n",bytes_sent);
         check = error_check((int) bytes_sent, SEND_ERROR,
                             "failed to send the message");
+        if (login_status != SUCCESS_LOGIN) break;
         if (!check) break;
     }
-
+    close(socekt_fd);
     //pthread_exit(NULL);
     puts("exited the thread");
     return NULL;
 }
 
-void generate_login_response(int login_status, message_t* msg, unsigned char* buffer, int buffer_size){
+void generate_login_response(int login_status, char* username, message_t* msg,
+                             unsigned char* buffer ,int buffer_size){
     memset(buffer, 0, buffer_size);
     memset(msg->data, 0, MAX_DATA);
 
@@ -169,8 +175,13 @@ void generate_login_response(int login_status, message_t* msg, unsigned char* bu
         message_to_buffer(msg, buffer);
     } else {
         msg->type = LO_NAK;
-        msg->size = 0;
+        msg->size = strlen(login_error_types[login_status]);
+        printf("the message size is %d\n", msg->size);
         strcpy((char *) msg->data, login_error_types[login_status]);
+        fill_message(msg, LO_NAK, strlen(login_error_types[login_status]),
+                     username, login_error_types[login_status]);
         message_to_buffer(msg, buffer);
+        printf("message content is %s\n", (char *)msg->data);
+        printf("buffer content is %s\n", buffer);
     }
 };

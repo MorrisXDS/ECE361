@@ -1,5 +1,20 @@
 #include "message.h"
 
+
+void fill_message(message_t* msg, unsigned int type, unsigned int size,char* source, char* data){
+    memset(msg, 0, sizeof(message_t));
+    msg->type = type;
+    msg->size = size;
+    strcpy((char *)msg->source, (char *)source);
+    if (size == 0) {
+        memset(msg->data, 0, MAX_DATA);
+        return;
+    }
+    for (unsigned int index = 0; index < size; ++index) {
+        msg->data[index] = data[index];
+    }
+};
+
 void message_to_buffer(message_t* msg,  unsigned char* buffer){
     sprintf((char *)buffer, "%d:%d:%s:", msg->type, msg->size, msg->source);
     unsigned long size = strlen((char *)buffer);
