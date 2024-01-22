@@ -3,156 +3,75 @@
 #include <stdlib.h>
 #include <pthread.h>
 
-int connection_status = 0;
+int server_connection_status = 0;
 char username[MAX_NAME];
+char arguments[5][20];
+int arguments_size = 0;
+int session_status = 0;
 
 int main(){
     char* terminal_buffer = malloc(sizeof(char) * terminal_buffer_size);
-    memset(terminal_buffer, 0, terminal_buffer_size);
-    size_t buffer_size = terminal_buffer_size-1;
-    ssize_t bytes_read = getline(&terminal_buffer, &(buffer_size), stdin);
-    if (bytes_read == -1){
-        perror("failed to read from stdin");
-        exit(errno);
-    }
-
-    char* content = strtok(terminal_buffer, " \0");
-    char arguments[5][20];
-
-    //setting up TCP socket
-    int argument_count = 0;
-    while(content != NULL){
-        if (argument_count > 4) {
-            printf("too many arguments\n");
-            free(terminal_buffer);
-            exit(1);
-        };
-        strcpy(arguments[argument_count], content);
-        content = strtok(NULL, " \0");
-        argument_count++;
-    }
-
-    memset(username, 0, MAX_NAME);
-    strcpy(username, arguments[1]);
-
-    unsigned int type;
-    command_to_type(arguments[0],&type);
-
-    if (type == INVALID){
-        printf("invalid command\n");
-        free(terminal_buffer);
-        exit(1);
-    }
-    if(type == LOGIN){
-        if (argument_count != 5){
-            printf("invalid number of arguments\n");
-            free(terminal_buffer);
-            exit(1);
-        }
-    }
-    else if(type == EXIT){
-        if (argument_count != 1){
-            printf("invalid number of arguments\n");
-            free(terminal_buffer);
-            exit(1);
-        }
-    }
-    else if(connection_status == 0){
-        printf("Please connect to the server first!\n");
-        exit(0);
-    }
-
-    //print all arguments out
-
-    int port = atoi(arguments[4]);
-    printf("port: %d\n", port);
-    sprintf(arguments[4], "%d", port);
-
-    int action_fd;
-    connect_to_server(arguments[3], arguments[4], &action_fd);
-
-    unsigned char buffer[ACC_BUFFER_SIZE];
     message_t msg;;
-    fill_message(&msg,LOGIN,strlen(arguments[2]),
-                 arguments[1], arguments[2]);
-    message_to_buffer(&msg, buffer);
+    int action_fd;
     ssize_t bytes_sent;
-    printf("============================================\n");
-    printf("message being sent to server: %s\n", (char *)msg.data);
-    printf("sending message to server\n");
-    bytes_sent = send(action_fd, buffer, ACC_BUFFER_SIZE, 0);
-    if(!error_check((int) bytes_sent, SEND_ERROR,
-                "failed to send the message to the server")) return 1;
+    unsigned char buffer[ACC_BUFFER_SIZE];
 
-    ssize_t byte_received;
-    memset(buffer, 0, ACC_BUFFER_SIZE);
-    memset(&msg, 0, sizeof(message_t));
-    byte_received = recv(action_fd, buffer, ACC_BUFFER_SIZE, 0);
-    if(!error_check((int) byte_received, RECEIVE_ERROR,
-                "failed to receive the message from the server")) return 1;
-    buffer_to_message(&msg, buffer);
-
-    printf("Response Type is: %d\n", msg.type);
-    printf("============================================\n");
-    decode_server_response(msg.type, (char *)msg.data);
     pthread_t thread;
     pthread_create(&thread, NULL, response_handler, (void *) &action_fd);
     while(1){
-        memset(terminal_buffer, 0, terminal_buffer_size);
-        buffer_size = terminal_buffer_size-1;
-        bytes_read = getline(&terminal_buffer, &(buffer_size), stdin);
-        if (bytes_read == -1){
-            perror("failed to read from stdin");
-            exit(errno);
-        }
+        take_terminal_input(&terminal_buffer);
 
-        char* token = strtok(terminal_buffer, " \0");
-
-        //setting up TCP socket
-        argument_count = 0;
-        while(token != NULL){
-            if (argument_count > 4) {
-                printf("too many arguments\n");
-                free(terminal_buffer);
-                exit(1);
-            };
-            printf("token %d printing\n",argument_count);
-            puts(token);
-            strcpy(arguments[argument_count], token);
-            token = strtok(NULL, " ");
-            argument_count++;
-        }
-
+        unsigned int type;
+        command_to_type(arguments[0],&type);
         puts(arguments[0]);
 
-        command_to_type(arguments[0],&type);
         if (type == INVALID){
             printf("invalid command\n");
             continue;
         }
+
+        if (type == LOGIN){
+            if (server_connection_status == 1) printf("you are already logged in\n");
+            connect_to_server(arguments[3], arguments[4], &action_fd);
+            memset(username, 0, MAX_NAME);
+            strcpy(username, arguments[1]);
+            continue;
+        }
+
         if(type == EXIT){
-            if (argument_count != 1){
+            if (arguments_size != 1){
                 printf("invalid number of arguments\n");
                 continue;
             }
+            if(server_connection_status == 0){
+                free(terminal_buffer);
+                terminal_buffer = NULL;
+                puts("exiting the program\n");
+                puts("goodbye!\n");
+                break;
+            }
+
             puts("sending message to server\n");
             fill_message(&msg, EXIT, 0, username, NULL);
             memset(buffer, 0, ACC_BUFFER_SIZE);
             message_to_buffer(&msg, buffer);
             bytes_sent = send(action_fd, buffer, ACC_BUFFER_SIZE, 0);
-            if(connection_status != 0) close(action_fd);
+            printf("closing connection\n");
+            close(action_fd);
+            server_connection_status = 0;
             free(terminal_buffer);
             terminal_buffer = NULL;
-            puts("exiting the program\n");
-            puts("goodbye!\n");
-            break;
+            printf("connection closed\n");
         }
-        if(connection_status == 0){
+
+        if(server_connection_status == 0){
             printf("Please connect to the server first!\n");
             continue;
         }
+
         if (type == LOGOUT){
-            if (argument_count != 1){
+            if (arguments_size != 1){
+
                 printf("invalid number of arguments\n");
                 continue;
             }
@@ -163,7 +82,7 @@ int main(){
             bytes_sent = send(action_fd, buffer, ACC_BUFFER_SIZE, 0);
             printf("closing connection\n");
             close(action_fd);
-            connection_status = 0;
+            server_connection_status = 0;
             printf("connection closed\n");
             continue;
         }
@@ -185,6 +104,7 @@ int check_command(char * command){
 };
 
 void* response_handler(void* arg){
+    while(server_connection_status == 0);
     int fd = *(int*) arg;
     unsigned char buffer[ACC_BUFFER_SIZE];
     ssize_t byte_received;
@@ -196,11 +116,11 @@ void* response_handler(void* arg){
         if (byte_received == 0){
             printf("server closed the connection\n");
             close(fd);
-            connection_status = 0;
+            server_connection_status = 0;
             break;
         }
         if(!error_check((int) byte_received, RECEIVE_ERROR,
-                    "failed to receive the message from the server")) return NULL;
+                        "failed to receive the message from the server")) return NULL;
         buffer_to_message(&msg, buffer);
         printf("Response Type is: %d\n", msg.type);
         printf("Server Message: %s\n", (char *)msg.data);
@@ -213,17 +133,17 @@ void* response_handler(void* arg){
 void command_to_type(char * command, unsigned int * type) {
     if (strcmp(command, "/login") == 0) {
         *type = LOGIN;
-    } else if (strcmp(command, "/logout\n") == 0) {
+    } else if (strcmp(command, "/logout") == 0) {
         *type = LOGOUT;
     } else if (strcmp(command, "/joinsession") == 0) {
         *type = JOIN;
-    } else if (strcmp(command, "/leavesession\n") == 0) {
+    } else if (strcmp(command, "/leavesession") == 0) {
         *type = LEAVE_SESS;
     } else if (strcmp(command, "/createsession") == 0) {
         *type = NEW_SESS;
-    } else if (strcmp(command, "/list\n") == 0) {
+    } else if (strcmp(command, "/list") == 0) {
         *type = QUERY;
-    } else if (strcmp(command, "/quit\n") == 0) {
+    } else if (strcmp(command, "/quit") == 0) {
         *type = EXIT;
     } else {
         printf("invalid command\n");
@@ -250,9 +170,6 @@ void connect_to_server(char * ip_address, char * port, int * socket_fd){
     hints.ai_family = AF_INET; // IPv4
     hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
 
-    if (!strcmp(ip_address,"128.100.13.252")) printf("ip address is correct\n");
-    if (!strcmp(port,"5000")) printf("port is correct\n");
-
     status = getaddrinfo(ip_address, port, &hints, &servinfo);
     if (status != 0) {
         fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
@@ -262,7 +179,7 @@ void connect_to_server(char * ip_address, char * port, int * socket_fd){
 
 
     *socket_fd = socket(servinfo->ai_family,
-                           servinfo->ai_socktype, servinfo->ai_protocol);
+                        servinfo->ai_socktype, servinfo->ai_protocol);
     if(!error_check(*socket_fd, FD_ERROR,
                     "failed to create a socket")) return;
 
@@ -270,5 +187,39 @@ void connect_to_server(char * ip_address, char * port, int * socket_fd){
     if(!error_check(condition, CONNECT_ERROR,
                     "failed to connect to the server")) return;
     freeaddrinfo(servinfo);
-    connection_status = 1;
+    server_connection_status = 1;
+}
+
+void take_terminal_input(char ** terminal_buffer){
+    arguments_size = 0;
+    memset((*terminal_buffer), 0, terminal_buffer_size);
+    size_t buffer_size = terminal_buffer_size-1;
+    ssize_t bytes_read = getline(&(*terminal_buffer), &(buffer_size), stdin);
+    if (bytes_read == -1){
+        perror("failed to read from stdin");
+        exit(errno);
+    }
+
+    char* content = strtok((*terminal_buffer), " \n");
+
+    int argument_count = 0;
+
+    //setting up TCP socket
+    while(content != NULL){
+        if (argument_count > 4) {
+            printf("too many arguments\n");
+            free((*terminal_buffer));
+            exit(1);
+        };
+        strcpy(arguments[argument_count], content);
+        content = strtok(NULL, " \0");
+        if (content == NULL){
+            unsigned long len = strlen(arguments[argument_count]);
+            if (arguments[argument_count][len-1] == '\n'){
+                arguments[argument_count][len-1] = '\0';
+            }
+        }
+        argument_count++;
+    }
+    arguments_size = argument_count;
 }
