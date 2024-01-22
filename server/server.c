@@ -278,6 +278,7 @@ void* connection_handler(void* accept_fd){
             }
         }
         if (msg.type == LEAVE_SESS){
+            printf("%s left session\n", msg.source);
             int index = return_user_index(name);
             if (user_list[index].session_id == NOT_IN_SESSION){
                 char message [MAX_DATA] = "you are not in a session";
@@ -287,13 +288,15 @@ void* connection_handler(void* accept_fd){
             pthread_mutex_lock(&leave_mutex);
             unsigned int id = user_list[index].session_id;
             session_list[id].user_count--;
-            user_list[index].session_id = NOT_IN_SESSION;
-            if (session_list[user_list[index].session_id].user_count == 0){
-                session_list[user_list[index].session_id].session_status = OFFLINE;
+            printf("there is %d people in the session", session_list[id].user_count);
+            if (session_list[id].user_count == 0){
+                session_list[id].session_status = OFFLINE;
+                printf("session #%d taken down\n", id);
             }
+            user_list[index].session_id = NOT_IN_SESSION;
             pthread_mutex_unlock(&leave_mutex);
             char message [50] = "left session";
-            sprintf(message, "You have left session #%d", user_list[index].session_id);
+            sprintf(message, "You have left session #%d", id);
             strcpy((char *)msg.data, message);
             msg.size = strlen(message);
             fill_message(&msg, msg.type, strlen(message),

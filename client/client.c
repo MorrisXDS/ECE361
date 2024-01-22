@@ -112,6 +112,10 @@ int main(){
             continue;
         }
         if (type == MESSAGE){
+            if (arguments_size != 1){
+                printf("invalid number of arguments\n");
+                continue;
+            }
             fill_message(&msg, MESSAGE, sizeof(message), username, message);
             send_a_message(&action_fd, &msg);
             continue;
@@ -248,6 +252,7 @@ void take_terminal_input(char ** terminal_buffer){
     if( *terminal_buffer[0] !=  '/'){
         memset(message, 0, MAX_DATA);
         strcpy(message, *terminal_buffer);
+        strcpy(arguments[0], "message");
         arguments_size = 1;
     }
 
