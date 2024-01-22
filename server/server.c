@@ -152,6 +152,7 @@ int set_user_list(){
         user_list[user_count].socket_fd = OFFLINE;
         strcpy(user_list[user_count].session_id, NOT_IN_SESSION);
         user_count++;
+        printf("user count now is %d in set_user_list\n", user_count);
     }
     fclose(fp);
     return 1;
@@ -203,6 +204,7 @@ void* connection_handler(void* accept_fd){
         buffer_to_message(&msg, data);
         memset(data, 0, ACC_BUFFER_SIZE);
         strcpy(name, (char *)msg.source);
+        printf("name is %s\n", name);
 
 
         if(msg.type == LOGIN) {
@@ -233,9 +235,12 @@ void* connection_handler(void* accept_fd){
             generate_login_response(authentication,name, &msg, data, ACC_BUFFER_SIZE);
         }
         if(msg.type == EXIT){
-            printf("%s closed connection\n", msg.source);
+            printf("%s closed connection\n", name);
             puts("server ending communication");
             int index = return_user_index(name);
+            printf("the index is %d\n", index);
+            printf("user_count now is %d\n after adding a new user", user_count);
+            printf("the user list now is:\n");
             user_list[index].socket_fd = OFFLINE;
             user_list[index].status = OFFLINE;
             if (strcmp(user_list[index].session_id,NOT_IN_SESSION) != 0){
@@ -252,7 +257,6 @@ void* connection_handler(void* accept_fd){
                 memset(user_list[index].ip_address, 0, INET_ADDRSTRLEN);
                 memset(&user_list[index].port, 0, sizeof (user_list[index].port));
             }
-            break;
         }
         if (msg.type == QUERY){
             get_active_user_list(&msg);
@@ -346,15 +350,32 @@ void* connection_handler(void* accept_fd){
                 send_message_in_a_session(&msg,message_session->session_id);
             }
         }
+        if (msg.type == REGISTER){
+            int error_type = verify_login(msg.source, msg.data);
+            if (user_count == LIST_CAPACITY){
+                char message [MAX_DATA] = "we're sorry. database at full capacity\n";
+                fill_message(&msg, RG_NAK, strlen(message), name, message);
+            }
+            else if (error_type != USERNAME_ERROR){
+                char message [MAX_DATA] = "username already exists\n";
+                fill_message(&msg, RG_NAK, strlen(message), name, message);
+            }
+            else{
+                char message [MAX_DATA] = "you have been registered now!\n";
+                add_user((char *) msg.source, (char *) msg.data, socekt_fd);
+                printf("the source is %s\n", name);
+                fill_message(&msg, RG_ACK, strlen(message), name, message);
+            }
+        }
 
         puts("sending a message");
         message_to_buffer(&msg, data);
         bytes_sent = send(socekt_fd, data, ACC_BUFFER_SIZE, 0);
         printf("bytes sent: %zd\n",bytes_sent);
-        printf("the message is %s\n", msg.data);
+        printf("the message is %s\n", data);
         check = error_check((int) bytes_sent, SEND_ERROR,
                             "failed to send the message");
-        if (authentication != SUCCESS_LOGIN) break;
+        if(msg.type == EXIT) break;
         if (!check) break;
     }
     close(socekt_fd);
@@ -411,7 +432,20 @@ void get_active_user_list(message_t * msg) {
 };
 
 int return_user_index(char * username){
+    printf("usercount is %d\n", user_count);
     for (int i = 0; i < user_count; ++i) {
+        printf("username: %s\n", (char *)user_list[i].username);
+        printf("password: %s\n", (char *)user_list[i].password);
+        printf("status: %d\n", user_list[i].status);
+        printf("socket_fd: %d\n", user_list[i].socket_fd);
+        printf("session_id: %s\n", user_list[i].session_id);
+        printf("port: %d\n", user_list[i].port);
+        printf("ip_address: %s\n", user_list[i].ip_address);
+        if (strcmp((char *)user_list[i].username, (char *)username) != 0){
+            printf("username: differs\n");
+            printf("username in database is %s\n",(char *)user_list[i].username);
+            printf("username from user input is %s\n",(char *)username);
+        }
         if (strcmp((char *)user_list[i].username, (char *)username) == 0){
             return i;
         }
@@ -435,5 +469,49 @@ void send_message_in_a_session(message_t * msg, char * session_id){
                 printf("failed to send message to %s\n", (char *)user_list[i].username);
             }
         }
+    }
+}
+
+void add_user(char * username, char * password, int socket_fd){
+    strcpy((char *)user_list[user_count].username, username);
+    strcpy((char *) user_list[user_count].password, password);
+    user_list[user_count].status = ONLINE;
+    user_list[user_count].socket_fd = socket_fd;
+    strcpy(user_list[user_count].session_id, NOT_IN_SESSION);
+
+
+    struct sockaddr_in client_addr;
+    socklen_t addr_len = sizeof(client_addr);
+
+    if (getpeername(socket_fd, (struct sockaddr*)&client_addr, &addr_len) == -1) {
+        perror("getpeername");
+        exit(EXIT_FAILURE);
+    }
+    struct sockaddr_in *s = (struct sockaddr_in *)&client_addr;
+    user_list[user_count].port = ntohs(s->sin_port);
+    inet_ntop(AF_INET, &s->sin_addr, user_list[user_count].ip_address,
+              sizeof (user_list[user_count].ip_address));
+    write_to_file(user_count);
+    user_count++;
+    printf("user_count now is %d\n after adding a new user", user_count);
+    printf("the user list now is:\n");
+}
+
+void write_to_file(int user_index){
+    FILE * fp;
+    fp = fopen("database.txt", "a");
+    fprintf(fp, "\n\"%s\":\"%s\"", user_list[user_index].username, user_list[user_index].password);
+    fclose(fp);
+}
+
+void print_user_list(){
+    for (int i = 0; i < user_count; ++i) {
+        printf("username: %s\n", (char *)user_list[i].username);
+        printf("password: %s\n", (char *)user_list[i].password);
+        printf("status: %d\n", user_list[i].status);
+        printf("socket_fd: %d\n", user_list[i].socket_fd);
+        printf("session_id: %s\n", user_list[i].session_id);
+        printf("port: %d\n", user_list[i].port);
+        printf("ip_address: %s\n", user_list[i].ip_address);
     }
 }

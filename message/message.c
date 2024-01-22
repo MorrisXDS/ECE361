@@ -86,6 +86,15 @@ void decode_server_response(unsigned int type, char* response){
         case QU_ACK:
             printf("%s", response);
             break;
+        case MESSAGE:
+            printf("%s", response);
+            break;
+        case RG_ACK:
+            printf("You are registered! Welcome!\n");
+            break;
+        case RG_NAK:
+            printf("Registration failed. %s\n", response);
+            break;
         default:
             puts(response);
             break;

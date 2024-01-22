@@ -25,6 +25,9 @@
 #define MESSAGE 10
 #define QU_ACK 12
 #define INVALID (-1)
+#define REGISTER 13
+#define RG_ACK 14
+#define RG_NAK 15
 
 //client message types
 #define LOGIN 0

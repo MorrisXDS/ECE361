@@ -18,8 +18,6 @@ int main(){
     unsigned char buffer[ACC_BUFFER_SIZE];
 
     pthread_t thread[thread_capacity];
-    pthread_create(&thread[0], NULL, response_handler, (void *) &action_fd);
-    thread_used++;
     while(1){
         if (thread_used == thread_capacity){
             puts("You've logged out too many times, please restart the program");
@@ -47,7 +45,7 @@ int main(){
             connect_to_server(arguments[3], arguments[4], &action_fd);
             fill_message(&msg, LOGIN, sizeof(arguments[2]), arguments[1], arguments[2]);
             send_a_message(&action_fd, &msg);
-            pthread_create(&thread[0], NULL, response_handler, (void *) &action_fd);
+            pthread_create(&thread[thread_used], NULL, response_handler, (void *) &action_fd);
             thread_used++;
             continue;
         }
@@ -73,7 +71,18 @@ int main(){
             terminal_buffer = NULL;
             printf("connection closed\n");
         }
-
+        if (type == REGISTER){
+            if (arguments_size != 5){
+                printf("invalid number of arguments\n");
+                continue;
+            }
+            connect_to_server(arguments[3], arguments[4], &action_fd);
+            fill_message(&msg, REGISTER, sizeof(arguments[2]), arguments[1], arguments[2]);
+            send_a_message(&action_fd, &msg);
+            pthread_create(&thread[thread_used], NULL, response_handler, (void *) &action_fd);
+            thread_used++;
+            continue;
+        }
         if(server_connection_status == 0){
             printf("Please connect to the server first!\n");
             continue;
@@ -133,7 +142,6 @@ int main(){
             send_a_message(&action_fd, &msg);
             continue;
         }
-
     }
 
     pthread_exit(NULL);
@@ -151,13 +159,13 @@ void* response_handler(void* arg){
         memset(&msg, 0, sizeof(message_t));
 
         byte_received = recv(fd, buffer, ACC_BUFFER_SIZE, 0);
+        printf("received content is %s", buffer);
         if (byte_received == 0){
             printf("server closed the connection\n");
             close(fd);
             server_connection_status = 0;
             continue;
         }
-
         if(!error_check((int) byte_received, RECEIVE_ERROR,
                         "failed to receive the message from the server")) return NULL;
         buffer_to_message(&msg, buffer);
@@ -165,13 +173,18 @@ void* response_handler(void* arg){
             memset(username, 0, MAX_NAME);
             strcpy(username, (char *)msg.source);
         }
-        printf("Response Type is: %d\n", msg.type);
-        printf("Server Message: %s\n", (char *)msg.data);
-        printf("============================================\n");
+        if (msg.type == RG_ACK){
+            memset(username, 0, MAX_NAME);
+            strcpy(username, (char *)msg.source);
+        }
         if (msg.type == MESSAGE){
             char display[ACC_BUFFER_SIZE];
             sprintf(display, "%s: %s", (char *)msg.source, (char *)msg.data);
             decode_server_response(msg.type, display);
+        }
+        else if(msg.type == RG_ACK){
+            server_connection_status = 1;
+            decode_server_response(msg.type, (char *)msg.data);
         }
         else{
             decode_server_response(msg.type, (char *)msg.data);
@@ -197,6 +210,9 @@ void command_to_type(char * command, unsigned int * type) {
         *type = QUERY;
     } else if (strcmp(command, "/quit") == 0) {
         *type = EXIT;
+    }
+    else if (strcmp(command,"/register") == 0){
+        *type = REGISTER;
     }
     else {
         if (command[0] == '/')
@@ -256,11 +272,14 @@ void take_terminal_input(char ** terminal_buffer){
         exit(errno);
     }
 
+    printf("the first char is %c\n", *terminal_buffer[0]);
+
     if( *terminal_buffer[0] !=  '/'){
         memset(message, 0, MAX_DATA);
         strcpy(message, *terminal_buffer);
         strcpy(arguments[0], "message");
         arguments_size = 1;
+        return;
     }
 
     char* content = strtok((*terminal_buffer), " \n");

@@ -47,7 +47,10 @@ void generate_login_response(int login_status, char * username, message_t* msg,
         unsigned char* buffer ,int buffer_size);
 void get_active_user_list(message_t * msg);
 void send_message_in_a_session(message_t * msg, char* session_id);
+void add_user(char * username, char * password, int socket_fd);
+void write_to_file(int user_index);
+void send_a_message(int *fd, message_t * msg);
+void print_user_list();
 
-//void send_a_message(int *fd, message_t * msg);
 
 #endif

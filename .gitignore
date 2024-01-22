@@ -1,3 +1,4 @@
 */*.o
 */client
 */server
+server/database.txt
