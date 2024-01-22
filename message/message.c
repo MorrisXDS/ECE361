@@ -74,6 +74,9 @@ void decode_server_response(unsigned int type, char* response){
         case LO_NAK:
             printf("Authentication failed. %s\n", response);
             break;
+        case NS_ACK:
+            printf("You just created a session\n");
+            break;
         case JN_ACK:
             printf("Session Starts!\n");
             break;
@@ -81,10 +84,10 @@ void decode_server_response(unsigned int type, char* response){
             printf("Session not created, %s\n", response);
             break;
         case QU_ACK:
-            printf("List:\n %s\n", response);
+            printf("%s", response);
             break;
         default:
-            printf("invalid response\n");
+            puts(response);
             break;
     }
 };

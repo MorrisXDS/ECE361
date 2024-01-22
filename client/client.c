@@ -7,7 +7,7 @@ int server_connection_status = 0;
 char username[MAX_NAME];
 char arguments[5][20];
 int arguments_size = 0;
-int session_status = 0;
+char message[MAX_DATA];
 
 int main(){
     char* terminal_buffer = malloc(sizeof(char) * terminal_buffer_size);
@@ -39,9 +39,7 @@ int main(){
                 continue;
             }
             connect_to_server(arguments[3], arguments[4], &action_fd);
-            memset(username, 0, MAX_NAME);
-            strcpy(username, arguments[1]);
-            fill_message(&msg, LOGIN, sizeof(arguments[2]), username, arguments[2]);
+            fill_message(&msg, LOGIN, sizeof(arguments[2]), arguments[1], arguments[2]);
             send_a_message(&action_fd, &msg);
             continue;
         }
@@ -72,6 +70,33 @@ int main(){
             printf("Please connect to the server first!\n");
             continue;
         }
+        if (type == NEW_SESS){
+            if (arguments_size != 2){
+                printf("invalid number of arguments\n");
+                continue;
+            }
+            fill_message(&msg, NEW_SESS, sizeof(arguments[1]), username, arguments[1]);
+            send_a_message(&action_fd, &msg);
+            continue;
+        }
+        if (type == JOIN){
+            if (arguments_size != 2){
+                printf("invalid number of arguments\n");
+                continue;
+            }
+            fill_message(&msg, JOIN, sizeof(arguments[1]), username, arguments[1]);
+            send_a_message(&action_fd, &msg);
+            continue;
+        }
+        if (type == LEAVE_SESS){
+            if (arguments_size != 1){
+                printf("invalid number of arguments\n");
+                continue;
+            }
+            fill_message(&msg, LEAVE_SESS, 0, username, NULL);
+            send_a_message(&action_fd, &msg);
+            continue;
+        }
         if (type == LOGOUT){
             if (arguments_size != 1){
                 printf("invalid number of arguments\n");
@@ -84,6 +109,20 @@ int main(){
             close(action_fd);
             server_connection_status = 0;
             printf("connection closed\n");
+            continue;
+        }
+        if (type == MESSAGE){
+            fill_message(&msg, MESSAGE, sizeof(message), username, message);
+            send_a_message(&action_fd, &msg);
+            continue;
+        }
+        if (type == QUERY){
+            if (arguments_size != 1){
+                printf("invalid number of arguments\n");
+                continue;
+            }
+            fill_message(&msg, QUERY, 0, username, NULL);
+            send_a_message(&action_fd, &msg);
             continue;
         }
 
@@ -109,13 +148,26 @@ void* response_handler(void* arg){
             server_connection_status = 0;
             break;
         }
+
         if(!error_check((int) byte_received, RECEIVE_ERROR,
                         "failed to receive the message from the server")) return NULL;
         buffer_to_message(&msg, buffer);
+        if (msg.type == LO_ACK){
+            memset(username, 0, MAX_NAME);
+            strcpy(username, (char *)msg.source);
+        }
         printf("Response Type is: %d\n", msg.type);
         printf("Server Message: %s\n", (char *)msg.data);
         printf("============================================\n");
-        decode_server_response(msg.type, (char *)msg.data);
+        if (msg.type == MESSAGE){
+            char display[ACC_BUFFER_SIZE];
+            sprintf(display, "%s: %s", (char *)msg.source, (char *)msg.data);
+            decode_server_response(msg.type, display);
+        }
+        else{
+            decode_server_response(msg.type, (char *)msg.data);
+        }
+
     }
     return NULL;
 }
@@ -135,8 +187,12 @@ void command_to_type(char * command, unsigned int * type) {
         *type = QUERY;
     } else if (strcmp(command, "/quit") == 0) {
         *type = EXIT;
-    } else {
-        *type = INVALID;
+    }
+    else {
+        if (command[0] == '/')
+            *type = INVALID;
+        else
+            *type = MESSAGE;
     }
 //    } else if (strcmp(command, "/invite") == 0){
 //        *type = INVITE;
@@ -189,6 +245,12 @@ void take_terminal_input(char ** terminal_buffer){
         exit(errno);
     }
 
+    if( *terminal_buffer[0] !=  '/'){
+        memset(message, 0, MAX_DATA);
+        strcpy(message, *terminal_buffer);
+        arguments_size = 1;
+    }
+
     char* content = strtok((*terminal_buffer), " \n");
 
     int argument_count = 0;
@@ -222,7 +284,6 @@ void send_a_message(int *fd, message_t * msg){
         printf("server closed the connection\n");
         close(*fd);
         server_connection_status = 0;
-        session_status = 0;
         return;
     }
     if(!error_check((int) bytes_sent, SEND_ERROR,
