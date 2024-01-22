@@ -5,7 +5,7 @@
 
 
 //TYPES
-#define SUCCESS_LOGIN 2
+#define SUCCESS_LOGIN 3
 #define USERNAME_ERROR 0
 #define PASSWORD_ERROR 1
 

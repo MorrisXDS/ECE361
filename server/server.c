@@ -157,7 +157,9 @@ int verify_login(unsigned char * username, unsigned char * password){
     for (int i = 0; i < user_count; ++i) {
         if (strcmp((char *)user_list[i].username, (char *)username) == 0){
             if (strcmp((char *)user_list[i].password, (char *)password) == 0){
-                if (user_list[i].status == ONLINE) return ALREADY_LOGIN;
+                if (user_list[i].status == ONLINE){
+                    return ALREADY_LOGIN;
+                }
                 user_list[i].status = ONLINE;
                 return SUCCESS_LOGIN;
             } else {
@@ -170,7 +172,7 @@ int verify_login(unsigned char * username, unsigned char * password){
 
 void* connection_handler(void* accept_fd){
     int socekt_fd = *(int *)accept_fd;
-    int login_status = 0;
+    int authentication = 0;
     unsigned char data[ACC_BUFFER_SIZE];
 
     while(1){
@@ -201,14 +203,19 @@ void* connection_handler(void* accept_fd){
 
         if(msg.type == LOGIN) {
             pthread_mutex_lock(&login_mutex);
-            login_status = verify_login(msg.source, msg.data);
-            if (login_status == SUCCESS_LOGIN) {
+            authentication = verify_login(msg.source, msg.data);
+            printf("authentication: %d\n", authentication);
+            if (authentication == ALREADY_LOGIN) {
+                fill_message(&msg,LO_NAK, sizeof(login_error_types[ALREADY_LOGIN]),
+                             (char *)msg.source, login_error_types[ALREADY_LOGIN]);
+            }
+            if (authentication == SUCCESS_LOGIN) {
                 int index = return_user_index(name);
                 user_list[index].socket_fd = socekt_fd;
                 user_list[index].status = ONLINE;
             }
             pthread_mutex_unlock(&login_mutex);
-            generate_login_response(login_status,name, &msg, data, ACC_BUFFER_SIZE);
+            generate_login_response(authentication,name, &msg, data, ACC_BUFFER_SIZE);
         }
         if(msg.type == EXIT){
             printf("%s closed connection\n", msg.source);
@@ -320,7 +327,7 @@ void* connection_handler(void* accept_fd){
         printf("bytes sent: %zd\n",bytes_sent);
         check = error_check((int) bytes_sent, SEND_ERROR,
                             "failed to send the message");
-        if (login_status != SUCCESS_LOGIN) break;
+        if (authentication != SUCCESS_LOGIN) break;
         if (!check) break;
     }
     close(socekt_fd);
@@ -329,22 +336,22 @@ void* connection_handler(void* accept_fd){
     return NULL;
 }
 
-void generate_login_response(int login_status, char* username, message_t* msg,
+void generate_login_response(int authentication, char* username, message_t* msg,
                              unsigned char* buffer ,int buffer_size){
     memset(buffer, 0, buffer_size);
     memset(msg->data, 0, MAX_DATA);
 
-    if (login_status == SUCCESS_LOGIN) {
+    if (authentication == SUCCESS_LOGIN) {
         msg->type = LO_ACK;
         msg->size = 0;
         message_to_buffer(msg, buffer);
     } else {
         msg->type = LO_NAK;
-        msg->size = strlen(login_error_types[login_status]);
+        msg->size = strlen(login_error_types[authentication]);
         printf("the message size is %d\n", msg->size);
-        strcpy((char *) msg->data, login_error_types[login_status]);
-        fill_message(msg, LO_NAK, strlen(login_error_types[login_status]),
-                     username, login_error_types[login_status]);
+        strcpy((char *) msg->data, login_error_types[authentication]);
+        fill_message(msg, LO_NAK, strlen(login_error_types[authentication]),
+                     username, login_error_types[authentication]);
         message_to_buffer(msg, buffer);
         printf("message content is %s\n", (char *)msg->data);
         printf("buffer content is %s\n", buffer);
