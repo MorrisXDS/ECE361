@@ -9,6 +9,8 @@ char arguments[5][20];
 int arguments_size = 0;
 char message[MAX_DATA];
 int thread_used = 0;
+char get_back = 0;
+char terminal_session = 0;
 
 int main(){
     char* terminal_buffer = malloc(sizeof(char) * terminal_buffer_size);
@@ -22,6 +24,10 @@ int main(){
         if (thread_used == thread_capacity){
             puts("You've logged out too many times, please restart the program");
             break;
+        }
+        if(get_back == 1){
+            get_back = 0;
+            continue;
         }
         take_terminal_input(&terminal_buffer);
 
@@ -153,7 +159,7 @@ void* response_handler(void* arg){
     while (server_connection_status != 0){
         memset(buffer, 0, ACC_BUFFER_SIZE);
         memset(&msg, 0, sizeof(message_t));
-
+        while(terminal_session != 0);
         byte_received = recv(fd, buffer, ACC_BUFFER_SIZE, 0);
         if (byte_received == 0){
             printf("server closed the connection\n");
@@ -167,24 +173,24 @@ void* response_handler(void* arg){
         if (msg.type == LO_ACK){
             memset(username, 0, MAX_NAME);
             strcpy(username, (char *)msg.source);
+            continue;
         }
         if (msg.type == RG_ACK){
             memset(username, 0, MAX_NAME);
             strcpy(username, (char *)msg.source);
+            continue;
         }
         if (msg.type == MESSAGE){
             char display[ACC_BUFFER_SIZE];
             sprintf(display, "%s: %s", (char *)msg.source, (char *)msg.data);
+            
             decode_server_response(msg.type, display);
+            continue;
         }
-        else if(msg.type == RG_ACK){
+        else if(msg.type == RG_ACK) {
             server_connection_status = 1;
-            decode_server_response(msg.type, (char *)msg.data);
         }
-        else{
-            decode_server_response(msg.type, (char *)msg.data);
-        }
-
+        decode_server_response(msg.type, (char *)msg.data);
     }
     return NULL;
 }
@@ -257,12 +263,14 @@ void connect_to_server(char * ip_address, char * port, int * socket_fd){
 }
 
 void take_terminal_input(char ** terminal_buffer){
+    terminal_session = 1;
     arguments_size = 0;
     memset((*terminal_buffer), 0, terminal_buffer_size);
     size_t buffer_size = terminal_buffer_size-1;
     ssize_t bytes_read = getline(&(*terminal_buffer), &(buffer_size), stdin);
     if (bytes_read == -1){
         perror("failed to read from stdin");
+        terminal_session = 0;
         exit(errno);
     }
 
@@ -271,6 +279,7 @@ void take_terminal_input(char ** terminal_buffer){
         strcpy(message, *terminal_buffer);
         strcpy(arguments[0], "message");
         arguments_size = 1;
+        terminal_session = 0;
         return;
     }
 
@@ -282,8 +291,9 @@ void take_terminal_input(char ** terminal_buffer){
     while(content != NULL){
         if (argument_count > 4) {
             printf("too many arguments\n");
-            free((*terminal_buffer));
-            exit(1);
+            get_back = 1;
+            terminal_session = 0;
+            return;
         };
         strcpy(arguments[argument_count], content);
         content = strtok(NULL, " \0");
@@ -296,6 +306,7 @@ void take_terminal_input(char ** terminal_buffer){
         argument_count++;
     }
     arguments_size = argument_count;
+    terminal_session = 0;
 }
 
 void send_a_message(int *fd, message_t * msg){

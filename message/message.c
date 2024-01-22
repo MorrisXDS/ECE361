@@ -75,10 +75,10 @@ void decode_server_response(unsigned int type, char* response){
             printf("Authentication failed. %s\n", response);
             break;
         case NS_ACK:
-            printf("You just created a session\n");
+            printf("You just created a session\n===============================\n");
             break;
         case JN_ACK:
-            printf("Session Starts!\n");
+            printf("Session Starts!\n===============================\n");
             break;
         case JN_NAK:
             printf("Session not created, %s\n", response);

@@ -16,6 +16,7 @@ pthread_mutex_t leave_mutex;
 pthread_mutex_t create_mutex;
 pthread_mutex_t message_mutex;
 
+
 int main(int argc, char* argv[]){
     //cited from Page 21 and Page 28, Beej's Guide to Network Programming, with modifications
     int status;
@@ -438,7 +439,9 @@ void send_message_in_a_session(message_t * msg, char * session_id){
             if (user_list[i].socket_fd == OFFLINE) continue;
             printf("%s is sending a message to %s\n",
                    (char*)msg->source, (char *)user_list[i].username);
+            pthread_mutex_lock(&message_mutex);
             ssize_t bytes = send(user_list[i].socket_fd, buffer, ACC_BUFFER_SIZE, 0);
+            pthread_mutex_unlock(&message_mutex);
             if (bytes == 0){
                 printf("connection to %s was closed", (char *)user_list[i].username);
             }
