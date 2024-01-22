@@ -143,16 +143,12 @@ int set_user_list(){
     char username[MAX_NAME];
     char password[MAX_PASSWORD_LENGTH];
     while (fscanf(fp, "\"%[^\"]\":\"%[^\"]\"\n", username, password) != EOF){
-        printf("user No.: %d\n", user_count+1);
         strcpy((char *)user_list[user_count].username, username);
         strcpy((char *)user_list[user_count].password, password);
-        printf("username: %s\n", user_list[user_count].username);
-        printf("password: %s\n", user_list[user_count].password);
         user_list[user_count].status = OFFLINE;
         user_list[user_count].socket_fd = OFFLINE;
         strcpy(user_list[user_count].session_id, NOT_IN_SESSION);
         user_count++;
-        printf("user count now is %d in set_user_list\n", user_count);
     }
     fclose(fp);
     return 1;
@@ -187,30 +183,27 @@ void* connection_handler(void* accept_fd){
         memset(data, 0, ACC_BUFFER_SIZE);
         puts("waiting for a message");
         bytes_recv = recv(socekt_fd, data, ACC_BUFFER_SIZE, 0);
-        printf("bytes received: %zd\n",bytes_recv);
         if (bytes_recv == 0) {
             puts("client disconnected");
             puts("closing the socket");
             puts("exiting the thread");
             break;
         }
-
         int check = error_check((int)bytes_recv, RECEIVE_ERROR,
                                 "failed to receive the message");
         if (!check) break;
 
+        printf("the received message is: %s\n", data);
         message_t msg;
-        printf("data: %s\n", data);
+
         buffer_to_message(&msg, data);
         memset(data, 0, ACC_BUFFER_SIZE);
         strcpy(name, (char *)msg.source);
-        printf("name is %s\n", name);
 
 
         if(msg.type == LOGIN) {
             pthread_mutex_lock(&login_mutex);
             authentication = verify_login(msg.source, msg.data);
-            printf("authentication: %d\n", authentication);
             if (authentication == ALREADY_LOGIN) {
                 fill_message(&msg,LO_NAK, sizeof(login_error_types[ALREADY_LOGIN]),
                              (char *)msg.source, login_error_types[ALREADY_LOGIN]);
@@ -238,16 +231,18 @@ void* connection_handler(void* accept_fd){
             printf("%s closed connection\n", name);
             puts("server ending communication");
             int index = return_user_index(name);
-            printf("the index is %d\n", index);
-            printf("user_count now is %d\n after adding a new user", user_count);
-            printf("the user list now is:\n");
+            if (index == -1) {
+                puts("user not found");
+                break;
+            }
             user_list[index].socket_fd = OFFLINE;
             user_list[index].status = OFFLINE;
             if (strcmp(user_list[index].session_id,NOT_IN_SESSION) != 0){
                 session_status_t * session_to_leave = session_list_find(list, user_list[index].session_id);
                 pthread_mutex_lock(&leave_mutex);
                 session_to_leave->user_count--;
-                printf("there is %d people still in the session", session_to_leave->user_count);
+                printf("there is %d people still in the session %s\n",
+                       session_to_leave->user_count, session_to_leave->session_id);
                 if (session_to_leave->user_count == 0){
                     printf("session #%s taken down\n", session_to_leave->session_id);
                     session_list_remove(list, session_to_leave);
@@ -313,7 +308,6 @@ void* connection_handler(void* accept_fd){
             }
         }
         if (msg.type == LEAVE_SESS){
-            printf("%s left session\n", msg.source);
             int index = return_user_index(name);
             session_status_t *session_to_leave = session_list_find(list, user_list[index].session_id);
             if (session_to_leave == NULL){
@@ -321,11 +315,13 @@ void* connection_handler(void* accept_fd){
                 fill_message(&msg, msg.type, strlen(message),
                              (char *)msg.source, message);
             }
+            printf("%s left session %s\n", msg.source, session_to_leave->session_id);
             char session_id [20];
             strcpy(session_id, session_to_leave->session_id);
             pthread_mutex_lock(&leave_mutex);
             session_to_leave->user_count--;
-            printf("there is %d people in the session", session_to_leave->user_count);
+            printf("there is %d people in the session %s\n",
+                   session_to_leave->user_count, session_to_leave->session_id);
             if (session_to_leave->user_count == 0){
                 printf("session #%s taken down\n", session_to_leave->session_id);
                 session_list_remove(list, session_to_leave);
@@ -333,7 +329,7 @@ void* connection_handler(void* accept_fd){
             strcpy(user_list[index].session_id, NOT_IN_SESSION);
             pthread_mutex_unlock(&leave_mutex);
             char message [50] = "left session";
-            sprintf(message, "You have left session #%s\n", session_id);
+            sprintf(message, "You have left session %s\n", session_id);
             strcpy((char *)msg.data, message);
             msg.size = strlen(message);
             fill_message(&msg, msg.type, strlen(message),
@@ -363,16 +359,13 @@ void* connection_handler(void* accept_fd){
             else{
                 char message [MAX_DATA] = "you have been registered now!\n";
                 add_user((char *) msg.source, (char *) msg.data, socekt_fd);
-                printf("the source is %s\n", name);
                 fill_message(&msg, RG_ACK, strlen(message), name, message);
             }
         }
 
-        puts("sending a message");
         message_to_buffer(&msg, data);
         bytes_sent = send(socekt_fd, data, ACC_BUFFER_SIZE, 0);
-        printf("bytes sent: %zd\n",bytes_sent);
-        printf("the message is %s\n", data);
+        printf("the sent message is %s\n", data);
         check = error_check((int) bytes_sent, SEND_ERROR,
                             "failed to send the message");
         if(msg.type == EXIT) break;
@@ -380,7 +373,6 @@ void* connection_handler(void* accept_fd){
     }
     close(socekt_fd);
     //pthread_exit(NULL);
-    puts("exited the thread");
     return NULL;
 }
 
@@ -396,13 +388,10 @@ void generate_login_response(int authentication, char* username, message_t* msg,
     } else {
         msg->type = LO_NAK;
         msg->size = strlen(login_error_types[authentication]);
-        printf("the message size is %d\n", msg->size);
         strcpy((char *) msg->data, login_error_types[authentication]);
         fill_message(msg, LO_NAK, strlen(login_error_types[authentication]),
                      username, login_error_types[authentication]);
         message_to_buffer(msg, buffer);
-        printf("message content is %s\n", (char *)msg->data);
-        printf("buffer content is %s\n", buffer);
     }
 };
 
@@ -412,16 +401,16 @@ void get_active_user_list(message_t * msg) {
     char content[32];
     memset(msg->data, 0, MAX_DATA);
     strcat((char *)msg->data, "active users:\n");
-    sprintf(header, "%-17s %s\n", "username", "session_id");
+    sprintf(header, "%-17s %s", "username", "session_id");
     strcat((char *)msg->data, header);
     for(int i = 0; i < user_count; ++i) {
         if (user_list[i].status == ONLINE) {
             memset(content, 0, 32);
             if (strcmp(user_list[i].session_id, NOT_IN_SESSION) == 0) {
-                sprintf(content, "%-17s %s\n",
+                sprintf(content, "\n%-17s %s",
                         (char *) user_list[i].username, "not in session");
             } else {
-                sprintf(content, "%-17s %s\n",
+                sprintf(content, "\n%-17s %s",
                         (char *) user_list[i].username, user_list[i].session_id);
             }
             strcat((char *)msg->data, content);
@@ -432,20 +421,7 @@ void get_active_user_list(message_t * msg) {
 };
 
 int return_user_index(char * username){
-    printf("usercount is %d\n", user_count);
     for (int i = 0; i < user_count; ++i) {
-        printf("username: %s\n", (char *)user_list[i].username);
-        printf("password: %s\n", (char *)user_list[i].password);
-        printf("status: %d\n", user_list[i].status);
-        printf("socket_fd: %d\n", user_list[i].socket_fd);
-        printf("session_id: %s\n", user_list[i].session_id);
-        printf("port: %d\n", user_list[i].port);
-        printf("ip_address: %s\n", user_list[i].ip_address);
-        if (strcmp((char *)user_list[i].username, (char *)username) != 0){
-            printf("username: differs\n");
-            printf("username in database is %s\n",(char *)user_list[i].username);
-            printf("username from user input is %s\n",(char *)username);
-        }
         if (strcmp((char *)user_list[i].username, (char *)username) == 0){
             return i;
         }
@@ -460,7 +436,8 @@ void send_message_in_a_session(message_t * msg, char * session_id){
         if (strcmp(user_list[i].session_id, session_id) == 0){
             if (return_user_index((char *)msg->source) == i) continue;
             if (user_list[i].socket_fd == OFFLINE) continue;
-            printf("sending message to %s\n", (char *)user_list[i].username);
+            printf("%s is sending a message to %s\n",
+                   (char*)msg->source, (char *)user_list[i].username);
             ssize_t bytes = send(user_list[i].socket_fd, buffer, ACC_BUFFER_SIZE, 0);
             if (bytes == 0){
                 printf("connection to %s was closed", (char *)user_list[i].username);
@@ -493,8 +470,6 @@ void add_user(char * username, char * password, int socket_fd){
               sizeof (user_list[user_count].ip_address));
     write_to_file(user_count);
     user_count++;
-    printf("user_count now is %d\n after adding a new user", user_count);
-    printf("the user list now is:\n");
 }
 
 void write_to_file(int user_index){

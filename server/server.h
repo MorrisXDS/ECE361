@@ -19,7 +19,6 @@
 #define MAX_PASSWORD_LENGTH 20
 #define THREAD_CAPACITY 10
 #define MAX_SESSION_NAME 20
-#define MAX_PORT_LENGTH 6
 
 #define user_t struct user
 

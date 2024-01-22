@@ -61,10 +61,8 @@ int main(){
                 puts("goodbye!");
                 break;
             }
-            puts("sending message to server");
             fill_message(&msg, EXIT, 0, username, NULL);
             send_a_message(&action_fd, &msg);
-            printf("closing connection\n");
             close(action_fd);
             server_connection_status = 0;
             free(terminal_buffer);
@@ -119,10 +117,8 @@ int main(){
                 printf("invalid number of arguments\n");
                 continue;
             }
-            puts("sending message to server");
             fill_message(&msg, EXIT, 0, username, NULL);
             send_a_message(&action_fd, &msg);
-            printf("closing connection\n");
             close(action_fd);
             server_connection_status = 0;
             printf("connection closed\n");
@@ -159,7 +155,6 @@ void* response_handler(void* arg){
         memset(&msg, 0, sizeof(message_t));
 
         byte_received = recv(fd, buffer, ACC_BUFFER_SIZE, 0);
-        printf("received content is %s", buffer);
         if (byte_received == 0){
             printf("server closed the connection\n");
             close(fd);
@@ -191,7 +186,6 @@ void* response_handler(void* arg){
         }
 
     }
-    printf("thread exiting\n");
     return NULL;
 }
 
@@ -257,7 +251,7 @@ void connect_to_server(char * ip_address, char * port, int * socket_fd){
     int condition = connect(*socket_fd, servinfo->ai_addr, servinfo->ai_addrlen);
     if(!error_check(condition, CONNECT_ERROR,
                     "failed to connect to the server")) return;
-    printf("connected to the server\n");
+    printf("you have been connected to the server\n");
     freeaddrinfo(servinfo);
     server_connection_status = 1;
 }
@@ -271,8 +265,6 @@ void take_terminal_input(char ** terminal_buffer){
         perror("failed to read from stdin");
         exit(errno);
     }
-
-    printf("the first char is %c\n", *terminal_buffer[0]);
 
     if( *terminal_buffer[0] !=  '/'){
         memset(message, 0, MAX_DATA);
