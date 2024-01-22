@@ -23,7 +23,6 @@ int main(){
 
         unsigned int type;
         command_to_type(arguments[0],&type);
-        puts(arguments[0]);
 
         if (type == INVALID){
             printf("invalid command\n");
@@ -31,13 +30,21 @@ int main(){
         }
 
         if (type == LOGIN){
-            if (server_connection_status == 1) printf("you are already logged in\n");
+            if (arguments_size != 5){
+                printf("invalid number of arguments\n");
+                continue;
+            }
+            if (server_connection_status == 1){
+                printf("you are already logged in\n");
+                continue;
+            }
             connect_to_server(arguments[3], arguments[4], &action_fd);
             memset(username, 0, MAX_NAME);
             strcpy(username, arguments[1]);
+            fill_message(&msg, LOGIN, sizeof(arguments[2]), username, arguments[2]);
+            send_a_message(&action_fd, &msg);
             continue;
         }
-
         if(type == EXIT){
             if (arguments_size != 1){
                 printf("invalid number of arguments\n");
@@ -46,16 +53,13 @@ int main(){
             if(server_connection_status == 0){
                 free(terminal_buffer);
                 terminal_buffer = NULL;
-                puts("exiting the program\n");
-                puts("goodbye!\n");
+                puts("exiting the program");
+                puts("goodbye!");
                 break;
             }
-
-            puts("sending message to server\n");
+            puts("sending message to server");
             fill_message(&msg, EXIT, 0, username, NULL);
-            memset(buffer, 0, ACC_BUFFER_SIZE);
-            message_to_buffer(&msg, buffer);
-            bytes_sent = send(action_fd, buffer, ACC_BUFFER_SIZE, 0);
+            send_a_message(&action_fd, &msg);
             printf("closing connection\n");
             close(action_fd);
             server_connection_status = 0;
@@ -68,18 +72,14 @@ int main(){
             printf("Please connect to the server first!\n");
             continue;
         }
-
         if (type == LOGOUT){
             if (arguments_size != 1){
-
                 printf("invalid number of arguments\n");
                 continue;
             }
-            puts("sending message to server\n");
+            puts("sending message to server");
             fill_message(&msg, EXIT, 0, username, NULL);
-            memset(buffer, 0, ACC_BUFFER_SIZE);
-            message_to_buffer(&msg, buffer);
-            bytes_sent = send(action_fd, buffer, ACC_BUFFER_SIZE, 0);
+            send_a_message(&action_fd, &msg);
             printf("closing connection\n");
             close(action_fd);
             server_connection_status = 0;
@@ -92,16 +92,6 @@ int main(){
     pthread_exit(NULL);
     return 1;
 }
-
-int check_command(char * command){
-    if (command[0] != '/') return message_id;
-    for (int i = 0; i < command_number; i++){
-        if (strcmp(command, commands[i]) == 0){
-            return i;
-        }
-    }
-    return COMMAND_NOT_FOUND;
-};
 
 void* response_handler(void* arg){
     while(server_connection_status == 0);
@@ -146,7 +136,6 @@ void command_to_type(char * command, unsigned int * type) {
     } else if (strcmp(command, "/quit") == 0) {
         *type = EXIT;
     } else {
-        printf("invalid command\n");
         *type = INVALID;
     }
 //    } else if (strcmp(command, "/invite") == 0){
@@ -222,4 +211,20 @@ void take_terminal_input(char ** terminal_buffer){
         argument_count++;
     }
     arguments_size = argument_count;
+}
+
+void send_a_message(int *fd, message_t * msg){
+    unsigned char buffer[ACC_BUFFER_SIZE];
+    memset(buffer, 0, ACC_BUFFER_SIZE);
+    message_to_buffer(msg, buffer);
+    ssize_t bytes_sent = send(*fd, buffer, ACC_BUFFER_SIZE, 0);
+    if(bytes_sent == 0){
+        printf("server closed the connection\n");
+        close(*fd);
+        server_connection_status = 0;
+        session_status = 0;
+        return;
+    }
+    if(!error_check((int) bytes_sent, SEND_ERROR,
+                    "failed to send the message to the server")) return;
 }

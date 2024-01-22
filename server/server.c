@@ -57,7 +57,7 @@ int main(int argc, char* argv[]){
         if (thread_count == THREAD_CAPACITY) {
             break;
         }
-        puts("accepting connections...\n");
+        puts("accepting connections...");
         int accept_fd = accept(listen_fd, (struct sockaddr *)&their_addr, &addr_size);
         if (accept_fd == -1) {
             if (errno == EWOULDBLOCK || errno == EAGAIN) {
@@ -146,7 +146,7 @@ void* connection_handler(void* accept_fd){
         if(msg.type == EXIT){
             close(socekt_fd);
             printf("%s closed connection\n", msg.source);
-            puts("server ending communication\n");
+            puts("server ending communication");
             break;
         }
 

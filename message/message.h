@@ -13,23 +13,27 @@
 #include <netdb.h>
 
 //DATA TYPES
-#define LOGIN 0
 #define LO_ACK 1
 #define LO_NAK 2
-#define EXIT 3
-#define JOIN 4
+
+
 #define JN_ACK 5
 #define JN_NAK 6
-#define LEAVE_SESS 7
-#define NEW_SESS 8
+
+
 #define NS_ACK 9
 #define MESSAGE 10
-#define QUERY 11
 #define QU_ACK 12
 #define INVALID (-1)
 
 //client message types
-#define LOGOUT 0
+#define LOGIN 0
+#define LOGOUT 1
+#define EXIT 3
+#define JOIN 4
+#define LEAVE_SESS 7
+#define NEW_SESS 8
+#define QUERY 11
 
 //Define Errors
 #define FD_ERROR (-1)

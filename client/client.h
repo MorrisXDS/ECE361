@@ -15,10 +15,10 @@ char commands[command_number][20] = {"/login",
                         "/list",
                         "/quit"};
 
-int check_command(char * command);
 void connect_to_server(char * ip_address, char * port, int * socket_fd);
 void take_terminal_input(char ** terminal_buffer);
 void* response_handler(void* arg);
 void command_to_type(char * command, unsigned int* type);
+void send_a_message(int *fd, message_t * msg);
 
 #endif
