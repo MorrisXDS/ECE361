@@ -290,13 +290,13 @@ void* connection_handler(void* accept_fd){
                 char message [MAX_DATA];
                 sprintf(message, "%s is not a valid session ID", (char *)msg.data);
                 fill_message(&msg, JN_NAK, strlen(message),
-                             (char *)msg.source, message);
+                             name, message);
             }
             else if (session_to_join == NULL){
                 char message [MAX_DATA] = "session does not exist";
                 sprintf(message, "session #%s is not a valid session ID", (char *)msg.data);
                 fill_message(&msg, JN_NAK, strlen(message),
-                             (char *)msg.source, message);
+                             name, message);
             }
             else{
                 int index = return_user_index(name);
@@ -314,7 +314,7 @@ void* connection_handler(void* accept_fd){
             if (session_to_leave == NULL){
                 char message [MAX_DATA] = "you are not in a session";
                 fill_message(&msg, msg.type, strlen(message),
-                             (char *)msg.source, message);
+                             name, message);
             }
             printf("%s left session %s\n", msg.source, session_to_leave->session_id);
             char session_id [20];
@@ -330,7 +330,7 @@ void* connection_handler(void* accept_fd){
             strcpy(user_list[index].session_id, NOT_IN_SESSION);
             pthread_mutex_unlock(&leave_mutex);
             char message [50] = "left session";
-            sprintf(message, "You have left session %s\n", session_id);
+            sprintf(message, "You have left session %s", session_id);
             strcpy((char *)msg.data, message);
             msg.size = strlen(message);
             fill_message(&msg, msg.type, strlen(message),
@@ -339,9 +339,8 @@ void* connection_handler(void* accept_fd){
         if (msg.type == MESSAGE){
             session_status_t * message_session = session_list_find(list, user_list[return_user_index(name)].session_id);
             if(message_session == NULL){
-                char message [MAX_DATA] = "you are not in a session";
-                fill_message(&msg, MESSAGE, strlen(message),
-                             (char *)msg.source, message);
+                fill_message(&msg, EMPTY, 0,
+                             (char *)msg.source, NULL);
             }
             else{
                 send_message_in_a_session(&msg,message_session->session_id);

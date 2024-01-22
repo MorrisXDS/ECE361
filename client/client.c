@@ -159,7 +159,6 @@ void* response_handler(void* arg){
     while (server_connection_status != 0){
         memset(buffer, 0, ACC_BUFFER_SIZE);
         memset(&msg, 0, sizeof(message_t));
-        while(terminal_session != 0);
         byte_received = recv(fd, buffer, ACC_BUFFER_SIZE, 0);
         if (byte_received == 0){
             printf("server closed the connection\n");
@@ -175,6 +174,13 @@ void* response_handler(void* arg){
             strcpy(username, (char *)msg.source);
             continue;
         }
+        if (msg.type == LO_NAK){
+            printf("server closed the connection\n");
+            decode_server_response(msg.type, (char *)msg.data);
+            close(fd);
+            server_connection_status = 0;
+        }
+
         if (msg.type == RG_ACK){
             memset(username, 0, MAX_NAME);
             strcpy(username, (char *)msg.source);
@@ -183,14 +189,14 @@ void* response_handler(void* arg){
         if (msg.type == MESSAGE){
             char display[ACC_BUFFER_SIZE];
             sprintf(display, "%s: %s", (char *)msg.source, (char *)msg.data);
-            
             decode_server_response(msg.type, display);
             continue;
         }
         else if(msg.type == RG_ACK) {
             server_connection_status = 1;
+            decode_server_response(msg.type, (char *)msg.data);
         }
-        decode_server_response(msg.type, (char *)msg.data);
+        
     }
     return NULL;
 }

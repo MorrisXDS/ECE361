@@ -28,6 +28,7 @@
 #define REGISTER 13
 #define RG_ACK 14
 #define RG_NAK 15
+#define EMPTY 16
 
 //client message types
 #define LOGIN 0

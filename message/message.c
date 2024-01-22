@@ -95,6 +95,8 @@ void decode_server_response(unsigned int type, char* response){
         case RG_NAK:
             printf("Registration failed. %s\n", response);
             break;
+        case EMPTY:
+            break;
         default:
             puts(response);
             break;
