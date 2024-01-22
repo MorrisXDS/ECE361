@@ -2,7 +2,7 @@
 #define CLIENT_H
 #include "../message/message.h"
 
-#define terminal_buffer_size 128
+#define terminal_buffer_size 999
 #define command_number 7
 #define message_id 8
 

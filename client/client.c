@@ -112,10 +112,6 @@ int main(){
             continue;
         }
         if (type == MESSAGE){
-            if (arguments_size != 1){
-                printf("invalid number of arguments\n");
-                continue;
-            }
             fill_message(&msg, MESSAGE, sizeof(message), username, message);
             send_a_message(&action_fd, &msg);
             continue;

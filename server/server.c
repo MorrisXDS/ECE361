@@ -2,9 +2,11 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include "server.h"
+#include "session.h"
+
 
 user_t user_list[LIST_CAPACITY];
-struct session session_list[MAX_SESSION_CAPACITY];
+session_list_t *list;
 int user_count = 0;
 
 pthread_mutex_t login_mutex;
@@ -21,7 +23,7 @@ int main(int argc, char* argv[]){
     socklen_t addr_size;
     struct addrinfo hints;
     struct addrinfo *servinfo; // will point to the results
-
+    list = session_list_init();
 
     int result = pthread_mutex_init(&logout_mutex, NULL);
     if (result != 0) {
@@ -145,8 +147,8 @@ int set_user_list(){
         printf("username: %s\n", user_list[user_count].username);
         printf("password: %s\n", user_list[user_count].password);
         user_list[user_count].status = OFFLINE;
-        user_list[user_count].session_id = NOT_IN_SESSION;
         user_list[user_count].socket_fd = OFFLINE;
+        strcpy(user_list[user_count].session_id, NOT_IN_SESSION);
         user_count++;
     }
     fclose(fp);
@@ -223,12 +225,16 @@ void* connection_handler(void* accept_fd){
             int index = return_user_index(name);
             user_list[index].socket_fd = OFFLINE;
             user_list[index].status = OFFLINE;
-            if (user_list[index].session_id != NOT_IN_SESSION){
+            if (strcmp(user_list[index].session_id,NOT_IN_SESSION) != 0){
+                session_status_t * session_to_leave = session_list_find(list, user_list[index].session_id);
                 pthread_mutex_lock(&leave_mutex);
-                session_list[user_list[index].session_id].user_count--;
-                if (session_list[user_list[index].session_id].user_count == 0){
-                    session_list[user_list[index].session_id].session_status = OFFLINE;
+                session_to_leave->user_count--;
+                printf("there is %d people in the session", session_to_leave->user_count);
+                if (session_to_leave->user_count == 0){
+                    printf("session #%s taken down\n", session_to_leave->session_id);
+                    session_list_remove(list, session_to_leave);
                 }
+                strcpy(user_list[index].session_id, NOT_IN_SESSION);
                 pthread_mutex_unlock(&leave_mutex);
             }
             break;
@@ -238,47 +244,50 @@ void* connection_handler(void* accept_fd){
         }
         if (msg.type == NEW_SESS){
             pthread_mutex_lock(&create_mutex);
-            int session_id = atoi((char *)msg.data);
-            if (session_id > MAX_SESSION_CAPACITY-1 || session_id < 0){
-                char message [MAX_DATA] = "session ID not valid!";
+            int count = session_list_count(list);
+            session_status_t* session = session_list_find(list, (char *)msg.data);
+            if (count == MAX_SESSION_CAPACITY){
+                char message [MAX_DATA] = "sessions at full capacity!";
                 fill_message(&msg, JN_NAK, strlen(message),
                              (char *)msg.source, message);
             }
-            else if (session_list[session_id].session_status == ONLINE){
+            else if (session != NULL){
                 char message [MAX_DATA] = "session already exists!";
                 fill_message(&msg, JN_NAK, strlen(message),
                              (char *)msg.source, message);
             }
             else{
                 int index = return_user_index(name);
-                user_list[index].session_id = session_id;
                 pthread_mutex_lock(&join_mutex);
-                session_list[session_id].user_count++;
-                session_list[session_id].session_status = ONLINE;
+                session_status_t new_session;
+                create_session_status(&new_session, (char *)msg.data);
+                session_list_insert_at_head(list,&new_session);
+                strcpy(user_list[index].session_id, (char *)msg.data);
                 pthread_mutex_unlock(&join_mutex);
                 msg.type = NS_ACK;
             }
             pthread_mutex_unlock(&create_mutex);
         }
         if (msg.type == JOIN){
-            int session_id = atoi((char *)msg.data);
-            if (session_id > MAX_SESSION_CAPACITY-1 || session_id < 0){
+            int count = session_list_count(list);
+            session_status_t* session_to_join = session_list_find(list, (char *)msg.data);
+            if (count == MAX_SESSION_CAPACITY){
                 char message [MAX_DATA];
-                sprintf(message, "%d is not a valid session ID", session_id);
+                sprintf(message, "%s is not a valid session ID", (char *)msg.data);
                 fill_message(&msg, JN_NAK, strlen(message),
                              (char *)msg.source, message);
             }
-            else if (session_list[session_id].session_status == OFFLINE){
+            else if (session_to_join == NULL){
                 char message [MAX_DATA] = "session does not exist";
-                sprintf(message, "session #%d is not a valid session ID", session_id);
+                sprintf(message, "session #%s is not a valid session ID", (char *)msg.data);
                 fill_message(&msg, JN_NAK, strlen(message),
                              (char *)msg.source, message);
             }
             else{
                 int index = return_user_index(name);
-                user_list[index].session_id = session_id;
+                strcpy(user_list[index].session_id, session_to_join->session_id);
                 pthread_mutex_lock(&join_mutex);
-                session_list[session_id].user_count++;
+                session_to_join->user_count++;
                 pthread_mutex_unlock(&join_mutex);
                 char message [MAX_DATA] = "joined session";
                 msg.type = JN_ACK;
@@ -287,37 +296,39 @@ void* connection_handler(void* accept_fd){
         if (msg.type == LEAVE_SESS){
             printf("%s left session\n", msg.source);
             int index = return_user_index(name);
-            if (user_list[index].session_id == NOT_IN_SESSION){
+            session_status_t *session_to_leave = session_list_find(list, user_list[index].session_id);
+            if (session_to_leave == NULL){
                 char message [MAX_DATA] = "you are not in a session";
                 fill_message(&msg, msg.type, strlen(message),
                              (char *)msg.source, message);
             }
+            char session_id [20];
+            strcpy(session_id, session_to_leave->session_id);
             pthread_mutex_lock(&leave_mutex);
-            unsigned int id = user_list[index].session_id;
-            session_list[id].user_count--;
-            printf("there is %d people in the session", session_list[id].user_count);
-            if (session_list[id].user_count == 0){
-                session_list[id].session_status = OFFLINE;
-                printf("session #%d taken down\n", id);
+            session_to_leave->user_count--;
+            printf("there is %d people in the session", session_to_leave->user_count);
+            if (session_to_leave->user_count == 0){
+                printf("session #%s taken down\n", session_to_leave->session_id);
+                session_list_remove(list, session_to_leave);
             }
-            user_list[index].session_id = NOT_IN_SESSION;
+            strcpy(user_list[index].session_id, NOT_IN_SESSION);
             pthread_mutex_unlock(&leave_mutex);
             char message [50] = "left session";
-            sprintf(message, "You have left session #%d", id);
+            sprintf(message, "You have left session #%s\n", session_id);
             strcpy((char *)msg.data, message);
             msg.size = strlen(message);
             fill_message(&msg, msg.type, strlen(message),
                          (char *)msg.source, message);
         }
         if (msg.type == MESSAGE){
-            unsigned int session_id = user_list[return_user_index(name)].session_id;
-            if(session_id == NOT_IN_SESSION){
+            session_status_t * message_session = session_list_find(list, user_list[return_user_index(name)].session_id);
+            if(message_session == NULL){
                 char message [MAX_DATA] = "you are not in a session";
                 fill_message(&msg, MESSAGE, strlen(message),
                              (char *)msg.source, message);
             }
             else{
-                send_message_in_a_session(&msg,session_id);
+                send_message_in_a_session(&msg,message_session->session_id);
             }
         }
 
@@ -369,11 +380,11 @@ void get_active_user_list(message_t * msg) {
     for(int i = 0; i < user_count; ++i) {
         if (user_list[i].status == ONLINE) {
             memset(content, 0, 32);
-            if (user_list[i].session_id == NOT_IN_SESSION) {
+            if (strcmp(user_list[i].session_id, NOT_IN_SESSION) == 0) {
                 sprintf(content, "%-17s %s\n",
                         (char *) user_list[i].username, "not in session");
             } else {
-                sprintf(content, "%-17s %d\n",
+                sprintf(content, "%-17s %s\n",
                         (char *) user_list[i].username, user_list[i].session_id);
             }
             strcat((char *)msg->data, content);
@@ -382,16 +393,6 @@ void get_active_user_list(message_t * msg) {
     printf("%s", (char *)msg->data);
     msg->size = strlen((char *)msg->data);
 };
-
-int the_longest_user_name_length(){
-    unsigned long max = 0;
-    for (int i = 0; i < user_count; ++i) {
-        if (strlen((char *)user_list[i].username) > max){
-            max = strlen((char *)user_list[i].username);
-        }
-    }
-    return (int)max;
-}
 
 int return_user_index(char * username){
     for (int i = 0; i < user_count; ++i) {
@@ -402,15 +403,14 @@ int return_user_index(char * username){
     return -1;
 }
 
-void send_message_in_a_session(message_t * msg, unsigned int session_id){
+void send_message_in_a_session(message_t * msg, char * session_id){
     char buffer [ACC_BUFFER_SIZE];
     message_to_buffer(msg, (unsigned char *)buffer);
     for (int i = 0; i < user_count; ++i) {
-        if (user_list[i].session_id == session_id){
+        if (strcmp(user_list[i].session_id, session_id) == 0){
             if (return_user_index((char *)msg->source) == i) continue;
             if (user_list[i].socket_fd == OFFLINE) continue;
             printf("sending message to %s\n", (char *)user_list[i].username);
-            printf("line reached here!\n");
             ssize_t bytes = send(user_list[i].socket_fd, buffer, ACC_BUFFER_SIZE, 0);
             if (bytes == 0){
                 printf("connection to %s was closed", (char *)user_list[i].username);
