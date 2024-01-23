@@ -3,337 +3,308 @@
 #include <stdlib.h>
 #include <pthread.h>
 
-int server_connection_status = 0;
-char username[MAX_NAME];
-char arguments[5][20];
-int arguments_size = 0;
-char message[MAX_DATA];
-int thread_used = 0;
-char get_back = 0;
-char terminal_session = 0;
-char* terminal_buffer;
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+int connection_status = 0;
+int session_status = 0;
+int terminate_signal = 0;
+char name[MAX_NAME];
 
-int main(){
-    terminal_buffer = malloc(sizeof(char) * terminal_buffer_size);
-    message_t msg;;
-    int action_fd;
-    ssize_t bytes_sent;
-    unsigned char buffer[ACC_BUFFER_SIZE];
 
-    pthread_t thread[thread_capacity];
-    while(1){
-        if (thread_used == thread_capacity){
-            puts("You've logged out too many times, please restart the program");
+void* server_message_handler(void* socket_fd){
+    while(connection_status == OFF);
+    int server_reply_socket = *((int*)socket_fd);
+    size_t bytes_received;
+    char buffer[maximum_buffer_size];
+    message_t message;
+
+    while (1){
+        if (terminate_signal == ON) break;
+        memset(buffer, 0, sizeof(buffer));
+        memset(&message, 0, sizeof(message));
+        memset(&bytes_received, 0, sizeof(bytes_received));
+        bytes_received = receive_message(&server_reply_socket, buffer);
+        if (bytes_received == RECEIVE_ERROR) {
+            fprintf(stderr, "Error receiving message\n");
             break;
         }
-        if(get_back == 1){
-            get_back = 0;
-            continue;
-        }
-        take_terminal_input(&terminal_buffer);
-
-        unsigned int type;
-        command_to_type(arguments[0],&type);
-
-        if (type == INVALID){
-            printf("invalid command\n");
-            continue;
+        else if (bytes_received == CONNECTION_REFUSED) {
+            fprintf(stderr, "You've logged out!\n");
+            break;
         }
 
-        if (type == LOGIN){
-            if (arguments_size != 5){
-                printf("invalid number of arguments\n");
-                continue;
-            }
-            if (server_connection_status == 1){
-                printf("you are already logged in\n");
-                continue;
-            }
-            connect_to_server(arguments[3], arguments[4], &action_fd);
-            fill_message(&msg, LOGIN, sizeof(arguments[2]), arguments[1], arguments[2]);
-            send_a_message(&action_fd, &msg);
-            pthread_create(&thread[thread_used], NULL, response_handler, (void *) &action_fd);
-            thread_used++;
+        string_to_message(&message, buffer);
+        if (message.type == LO_ACK){
+            strcpy(name, (char *)message.source);
+            fprintf(stdout, "%s hopped on the server\n", name);
+        }
+        if (message.type == LO_NAK){
+            fprintf(stderr, "Login failed %s\n", (char *)message.data);
             continue;
         }
-        if(type == EXIT){
-            if (arguments_size != 1){
-                printf("invalid number of arguments\n");
-                continue;
-            }
-            if(server_connection_status == 0){
-                free(terminal_buffer);
-                terminal_buffer = NULL;
-                puts("exiting the program");
-                puts("goodbye!");
-                break;
-            }
-            fill_message(&msg, EXIT, 0, username, NULL);
-            send_a_message(&action_fd, &msg);
-            close(action_fd);
-            server_connection_status = 0;
-            free(terminal_buffer);
-            terminal_buffer = NULL;
-            printf("connection closed\n");
-        }
-        if (type == REGISTER){
-            if (arguments_size != 5){
-                printf("invalid number of arguments\n");
-                continue;
-            }
-            if(server_connection_status == 1){
-                printf("Registration Not available after log-in!\n");
-                continue;
-            }
-            connect_to_server(arguments[3], arguments[4], &action_fd);
-            fill_message(&msg, REGISTER, sizeof(arguments[2]), arguments[1], arguments[2]);
-            send_a_message(&action_fd, &msg);
-            pthread_create(&thread[thread_used], NULL, response_handler, (void *) &action_fd);
-            thread_used++;
+        if (message.type == JN_ACK){
+            fprintf(stdout, "You joined session %s\n", (char *)message.data);
+            session_status = ON;
             continue;
         }
-        if(server_connection_status == 0){
-            printf("Please connect to the server first!\n");
+        if (message.type == JN_NAK){
+            fprintf(stderr, "Joining session failed %s\n", (char *)message.data);
             continue;
         }
-        if (type == NEW_SESS){
-            if (arguments_size != 2){
-                printf("invalid number of arguments\n");
-                continue;
-            }
-            fill_message(&msg, NEW_SESS, sizeof(arguments[1]), username, arguments[1]);
-            send_a_message(&action_fd, &msg);
+        if (message.type == NS_ACK){
+            fprintf(stdout, "You created session %s\n", (char *)message.data);
+            session_status = ON;
             continue;
         }
-        if (type == JOIN){
-            if (arguments_size != 2){
-                printf("invalid number of arguments\n");
-                continue;
-            }
-            fill_message(&msg, JOIN, sizeof(arguments[1]), username, arguments[1]);
-            send_a_message(&action_fd, &msg);
+        if (message.type == NEW_SESS){
+            fprintf(stderr, "Failed to create session %s \n", (char *)message.data);
             continue;
         }
-        if (type == LEAVE_SESS){
-            if (arguments_size != 1){
-                printf("invalid number of arguments\n");
-                continue;
-            }
-            fill_message(&msg, LEAVE_SESS, 0, username, NULL);
-            send_a_message(&action_fd, &msg);
+        if (message.type == MESSAGE && strcmp((char *)message.source, name) != 0){
+                fprintf(stdout, "%s: %s\n", (char *)message.source, (char *)message.data);
             continue;
         }
-        if (type == LOGOUT){
-            if (arguments_size != 1){
-                printf("invalid number of arguments\n");
-                continue;
-            }
-            fill_message(&msg, EXIT, 0, username, NULL);
-            send_a_message(&action_fd, &msg);
-            close(action_fd);
-            server_connection_status = 0;
-            printf("connection closed\n");
+        if (message.type == QU_ACK){
+            fprintf(stdout, "%s", (char *)message.data);
             continue;
-        }
-        if (type == MESSAGE){
-            fill_message(&msg, MESSAGE, sizeof(message), username, message);
-            send_a_message(&action_fd, &msg);
-            continue;
-        }
-        if (type == QUERY){
-            if (arguments_size != 1){
-                printf("invalid number of arguments\n");
-                continue;
-            }
-            fill_message(&msg, QUERY, 0, username, NULL);
-            send_a_message(&action_fd, &msg);
-            continue;
-        }
-    }
-
-    pthread_exit(NULL);
-    return 1;
-}
-
-void* response_handler(void* arg){
-    while (server_connection_status == 0);
-    int fd = *(int*) arg;
-    unsigned char buffer[ACC_BUFFER_SIZE];
-    ssize_t byte_received;
-    message_t msg;
-    while (server_connection_status != 0){
-        memset(buffer, 0, ACC_BUFFER_SIZE);
-        memset(&msg, 0, sizeof(message_t));
-        byte_received = recv(fd, buffer, ACC_BUFFER_SIZE, 0);
-        if (byte_received == 0){
-            printf("server closed the connection\n");
-            close(fd);
-            server_connection_status = 0;
-            continue;
-        }
-        if(!error_check((int) byte_received, RECEIVE_ERROR,
-                        "failed to receive the message from the server")) return NULL;
-        buffer_to_message(&msg, buffer);
-        if (msg.type == LO_ACK){
-            memset(username, 0, MAX_NAME);
-            strcpy(username, (char *)msg.source);
-            continue;
-        }
-        if (msg.type == LO_NAK){
-            printf("server closed the connection\n");
-            decode_server_response(msg.type, (char *)msg.data);
-            close(fd);
-            server_connection_status = 0;
-        }
-        if (msg.type == RG_ACK){
-            memset(username, 0, MAX_NAME);
-            strcpy(username, (char *)msg.source);
-            server_connection_status = 1;
-            continue;
-        }
-        if (msg.type == MESSAGE){
-            char display[ACC_BUFFER_SIZE];
-            sprintf(display, "%s: %s", (char *)msg.source, (char *)msg.data);
-            int type = msg.type;
-            decode_server_response(type, display);
-            continue;
-        }
-        else if(msg.type == RG_NAK) {
-            server_connection_status = 0;
-            decode_server_response(msg.type, (char *)msg.data);
         }
 
-        decode_server_response(msg.type, (char *)msg.data);
-        
     }
     return NULL;
 }
 
-void command_to_type(char * command, unsigned int * type) {
-    if (strcmp(command, "/login") == 0) {
-        *type = LOGIN;
-    } else if (strcmp(command, "/logout") == 0) {
-        *type = LOGOUT;
-    } else if (strcmp(command, "/joinsession") == 0) {
-        *type = JOIN;
-    } else if (strcmp(command, "/leavesession") == 0) {
-        *type = LEAVE_SESS;
-    } else if (strcmp(command, "/createsession") == 0) {
-        *type = NEW_SESS;
-    } else if (strcmp(command, "/list") == 0) {
-        *type = QUERY;
-    } else if (strcmp(command, "/quit") == 0) {
-        *type = EXIT;
-    }
-    else if (strcmp(command,"/register") == 0){
-        *type = REGISTER;
-    }
-    else {
-        if (command[0] == '/')
-            *type = INVALID;
-        else
-            *type = MESSAGE;
-    }
-//    } else if (strcmp(command, "/invite") == 0){
-//        *type = INVITE;
-//    } else if (strcmp(command, "/accept") == 0){
-//        *type = ACCEPT;
-//    } else if (strcmp(command, "/decline") == 0){
-//        *type = DECLINE;
-//    } else if (strcmp(command, "/message") == 0){
-//        *type = MESSAGE;
-//    }
-};
 
-void connect_to_server(char * ip_address, char * port, int * socket_fd){
-    //cited from page 21 of Beej's Guide to Network Programming, with modifications
+int main(){
+    fprintf(stdout, "Welcome to the chatroom!\n");
+    char * line_buffer = NULL;
+    size_t line_buffer_size;
+    ssize_t bytes_read;
+    char input[maximum_parameter_size][20];
+    int socket_fd;
+    pthread_t thread;
+
+    while(ON){
+        //reset the input array
+        for (int i = 0; i < maximum_parameter_size; ++i) {
+            memset(input[i], 0, sizeof(input[i]));
+        }
+        bytes_read = getline(&line_buffer, &line_buffer_size, stdin);
+        if (bytes_read == 1 && line_buffer[0] == '\n') {
+            continue;
+        }
+        if (bytes_read == -1) {
+            fprintf(stderr, "Error reading input\n");
+            continue;
+        }
+
+        int index = 0;
+        char* token = strtok(line_buffer, " \n\0");
+        while(token != NULL){
+            if (index == maximum_parameter_size) {
+                fprintf(stderr, "Too many arguments\n");
+                continue;
+            }
+            strcpy(input[index], token);
+            index++;
+            token = strtok(NULL, " \n");
+        }
+
+        if (strcmp(input[0], "/quit") == 0) {
+            if (index != 1) {
+                fprintf(stderr, "Invalid number of arguments\n");
+                continue;
+            }
+            terminate_program(&socket_fd);
+            break;
+        }
+        if (strcmp(input[0], "/login") == 0) {
+            if (index != 5) {
+                fprintf(stderr, "Invalid number of arguments\n");
+                continue;
+            }
+            char * username = input[1];
+            char * password = input[2];
+            char * ip_address = input[3];
+            char * port = input[4];
+            login(&socket_fd, ip_address, port, username, password, &thread);
+        }
+        //register goes here
+        if (connection_status == 0){
+            fprintf(stderr, "Please login first\n");
+            continue;
+        }
+        else if (strcmp(input[0], "/logout") == 0) {
+            if (index != 1) {
+                fprintf(stderr, "Invalid number of arguments\n");
+                continue;
+            }
+            logout(&socket_fd);
+        } else if (strcmp(input[0], "/joinsession") == 0) {
+            if (index != 2) {
+                fprintf(stderr, "Invalid number of arguments\n");
+                continue;
+            }
+            char * session_id = input[1];
+            join_session(&socket_fd, session_id);
+        } else if (strcmp(input[0], "/leavesession") == 0) {
+            if (index != 1) {
+                fprintf(stderr, "Invalid number of arguments\n");
+                continue;
+            }
+            leave_session(&socket_fd);
+        } else if (strcmp(input[0], "/createsession") == 0) {
+            if (index != 2) {
+                fprintf(stderr, "Invalid number of arguments\n");
+                continue;
+            }
+            char * session_id = input[1];
+            create_session(&socket_fd, session_id);
+        } else if (strcmp(input[0], "/list") == 0) {
+            if (index != 1) {
+                fprintf(stderr, "Invalid number of arguments\n");
+                continue;
+            }
+
+            list(&socket_fd);
+        } else
+            continue;
+
+    }
+    pthread_join(thread, NULL);
+    free(line_buffer);
+    return 0;
+}
+
+void login(int * socket_fd, char * ip_address, char * port, char * username, char * password, pthread_t* thread){
+    // Beej's book
     int status;
     struct addrinfo hints;
-    struct addrinfo *servinfo;
+    struct addrinfo *servinfo, *p; // will point to the results
 
-    memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_INET; // IPv4
+    memset(&hints, 0, sizeof hints); // make sure the struct is empty
+    hints.ai_family = AF_UNSPEC; // don't care IPv4 or IPv6
     hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
+    hints.ai_flags = AI_PASSIVE; // fill in my IP for me
 
-    status = getaddrinfo(ip_address, port, &hints, &servinfo);
-    if (status != 0) {
+    if ((status = getaddrinfo(ip_address, port, &hints, &servinfo)) != 0) {
         fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
-        exit(1);
-    }
-    //end of citation
-
-
-    *socket_fd = socket(servinfo->ai_family,
-                        servinfo->ai_socktype, servinfo->ai_protocol);
-    if(!error_check(*socket_fd, FD_ERROR,
-                    "failed to create a socket")) return;
-
-    int condition = connect(*socket_fd, servinfo->ai_addr, servinfo->ai_addrlen);
-    if(!error_check(condition, CONNECT_ERROR,
-                    "failed to connect to the server")) return;
-    printf("you have been connected to the server\n");
-    freeaddrinfo(servinfo);
-    server_connection_status = 1;
-}
-
-void take_terminal_input(char ** terminal_buffer){
-    terminal_session = 1;
-    arguments_size = 0;
-    memset((*terminal_buffer), 0, terminal_buffer_size);
-    size_t buffer_size = terminal_buffer_size-1;
-    ssize_t bytes_read = getline(&(*terminal_buffer), &(buffer_size), stdin);
-    if (bytes_read == -1){
-        perror("failed to read from stdin");
-        terminal_session = 0;
-        exit(errno);
-    }
-
-    if( *terminal_buffer[0] !=  '/'){
-        memset(message, 0, MAX_DATA);
-        strcpy(message, *terminal_buffer);
-        strcpy(arguments[0], "message");
-        arguments_size = 1;
-        terminal_session = 0;
         return;
     }
 
-    char* content = strtok((*terminal_buffer), " \n");
-
-    int argument_count = 0;
-
-    //setting up TCP socket
-    while(content != NULL){
-        if (argument_count > 4) {
-            printf("too many arguments\n");
-            get_back = 1;
-            terminal_session = 0;
-            return;
-        };
-        strcpy(arguments[argument_count], content);
-        content = strtok(NULL, " \0");
-        if (content == NULL){
-            unsigned long len = strlen(arguments[argument_count]);
-            if (arguments[argument_count][len-1] == '\n'){
-                arguments[argument_count][len-1] = '\0';
-            }
+    // loop through all the results and connect to the first we can
+    for(p = servinfo; p != NULL; p = p->ai_next) {
+        if ((*socket_fd = socket(p->ai_family, p->ai_socktype,
+                p->ai_protocol)) == -1) {
+            perror("client: socket");
+            continue;
         }
-        argument_count++;
+        if (connect(*socket_fd, p->ai_addr, p->ai_addrlen) == -1) {
+            close(*socket_fd);
+            perror("client: connect");
+            continue;
+        }
+        break;
     }
-    arguments_size = argument_count;
-    terminal_session = 0;
+
+    if (p == NULL) {
+        fprintf(stderr, "client: failed to connect\n");
+        exit(2);
+    }
+
+    set_connection_status(ON);
+    pthread_create(&(*thread), NULL, &server_message_handler, &(*socket_fd));
+    //send login message
+    message_t msg;
+    char buffer[maximum_buffer_size];
+    fill_message(&msg, LOGIN, strlen(password),username, password);
+    message_to_string(&msg, msg.size, buffer);
+    unsigned int code = send_message(socket_fd,maximum_buffer_size, buffer);
+    if(code == 0){
+        printf("Could Not reach the server at this moment\n");
+    }
+    else if (code == -1){
+        printf("Connection error\n");
+    }
+    freeaddrinfo(servinfo); // all done with this structure
+
 }
 
-void send_a_message(int *fd, message_t * msg){
-    unsigned char buffer[ACC_BUFFER_SIZE];
-    memset(buffer, 0, ACC_BUFFER_SIZE);
-    message_to_buffer(msg, buffer);
-    ssize_t bytes_sent = send(*fd, buffer, ACC_BUFFER_SIZE, 0);
-    if(bytes_sent == 0){
-        printf("server closed the connection\n");
-        close(*fd);
-        server_connection_status = 0;
-        return;
+void logout(int * socket_fd){
+    message_t msg;
+    char buffer[maximum_buffer_size];
+    fill_message(&msg, EXIT, 0, name, NULL);
+    message_to_string(&msg, msg.size, buffer);
+    unsigned int code = send_message(socket_fd, maximum_buffer_size,buffer);
+    if(code == 0){
+        printf("Could Not reach the server at this moment\n");
     }
-    if(!error_check((int) bytes_sent, SEND_ERROR,
-                    "failed to send the message to the server")) return;
+    else if (code == -1){
+        printf("Connection error\n");
+    }
+};
+
+void join_session(int * socket_fd, char * session_id){
+    message_t msg;
+    char buffer[maximum_buffer_size];
+    fill_message(&msg, JOIN, strlen(session_id), name, session_id);
+    message_to_string(&msg, msg.size, buffer);
+    unsigned int code = send_message(socket_fd, maximum_buffer_size,buffer);
+    if(code == 0){
+        printf("Could Not reach the server at this moment\n");
+    }
+    else if (code == -1){
+        printf("Connection error\n");
+    }
+}
+
+void leave_session(int * socket_fd){
+    message_t msg;
+    char buffer[maximum_buffer_size];
+    fill_message(&msg, LEAVE_SESS, 0, name, NULL);
+    message_to_string(&msg, msg.size, buffer);
+    unsigned int code = send_message(socket_fd, maximum_buffer_size,buffer);
+    if(code == 0){
+        printf("Could Not reach the server at this moment\n");
+    }
+    else if (code == -1){
+        printf("Connection error\n");
+    }
+}
+
+void create_session(int * socket_fd, char * session_id){
+    message_t msg;
+    char buffer[maximum_buffer_size];
+    fill_message(&msg, NEW_SESS, strlen(session_id), name, session_id);
+    message_to_string(&msg, msg.size, buffer);
+    unsigned int code = send_message(socket_fd, maximum_buffer_size,buffer);
+    if(code == 0){
+        printf("Could Not reach the server at this moment\n");
+    }
+    else if (code == -1){
+        printf("Connection error\n");
+    }
+}
+void list(int * socket_fd){
+    message_t msg;
+    char buffer[maximum_buffer_size];
+    fill_message(&msg, QUERY, 0, name, NULL);
+    message_to_string(&msg, msg.size, buffer);
+    unsigned int code = send_message(socket_fd, maximum_buffer_size,buffer);
+    if(code == 0){
+        printf("Could Not reach the server at this moment\n");
+    }
+    else if (code == -1){
+        printf("Connection error\n");
+    }
+}
+
+void terminate_program(int * socket_fd){
+    if (connection_status == ON){
+        logout(socket_fd);
+    }
+    terminate_signal = ON;
+}
+
+
+void set_connection_status(int status){
+    connection_status = status;
 }

@@ -2,24 +2,23 @@
 #define CLIENT_H
 #include "../message/message.h"
 
-#define terminal_buffer_size 128
 #define command_number 7
-#define message_id 8
-#define thread_capacity 20
+#define maximum_buffer_size 1200
+#define maximum_parameter_size 5
 
-//global variables
-char commands[command_number][20] = {"/login",
-                        "/logout",
-                        "/joinsession",
-                        "/leavesession",
-                        "/createsession",
-                        "/list",
-                        "/quit"};
+#define OFF 0
+#define ON 1
 
-void connect_to_server(char * ip_address, char * port, int * socket_fd);
-void take_terminal_input(char ** terminal_buffer);
-void* response_handler(void* arg);
-void command_to_type(char * command, unsigned int* type);
-void send_a_message(int *fd, message_t * msg);
+
+
+void login(int * socket_fd, char * ip_address, char * port, char * username, char * password, pthread_t* thread);
+void logout(int * socket_fd);
+void join_session(int * socket_fd, char * session_id);
+void leave_session(int * socket_fd);
+void create_session(int * socket_fd, char * session_id);
+void list(int * socket_fd);
+void terminate_program(int * socket_fd);
+void* server_message_handler(void* socket_fd);
+void set_connection_status(int status);
 
 #endif

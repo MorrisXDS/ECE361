@@ -1,108 +1,61 @@
 #include "message.h"
 
 
-void fill_message(message_t* msg, unsigned int type, unsigned int size,char* source, char* data){
-    memset(msg, 0, sizeof(message_t));
-    msg->type = type;
-    msg->size = size;
-    strcpy((char *)msg->source, (char *)source);
-    if (size == 0) {
-        memset(msg->data, 0, MAX_DATA);
+void fill_message(message_t * message, unsigned int type,unsigned int size, char * source, char * data){
+    message->size = size;
+    message->type = type;
+    if (size == 0){
+        memset(message->data, 0, sizeof(message->data));
+    }
+    else{
+        strcpy((char*)message->data, data);
+    }
+    strcpy((char*)message->source, source);
+}
+
+void message_to_string(message_t * message, unsigned int message_data_size, char * buffer){
+    sprintf(buffer, "%d:%d:%s:", message->type, message_data_size, message->source);
+    if (message_data_size == 0){
+        memset(message->data, 0, sizeof(message->data));
+    }
+    else{
+        strncat(buffer, (char*)message->data, message_data_size);
+    }
+}
+void string_to_message(message_t * message, char * data){
+    char * token = strtok(data, ":\0");
+    message->type = atoi(token);
+    token = strtok(NULL, ":\0");
+    message->size = atoi(token);
+    token = strtok(NULL, ":\0");
+    strcpy((char*)message->source, token);
+    token = strtok(NULL, ":\0");
+    if (token == NULL){
+        memset(message->data, 0, sizeof(message->data));
         return;
     }
-    for (unsigned int index = 0; index < size; ++index) {
-        msg->data[index] = data[index];
+    strcpy((char*)message->data, token);
+}
+int send_message(const int * socket_fd, unsigned int message_size, char * message){
+    size_t bytes_sent = send(*socket_fd, message, message_size, 0);
+    if(bytes_sent == -1 || bytes_sent != message_size){
+        return SEND_ERROR;
     }
-};
-
-void message_to_buffer(message_t* msg,  unsigned char* buffer){
-    sprintf((char *)buffer, "%d:%d:%s:", msg->type, msg->size, msg->source);
-    unsigned long size = strlen((char *)buffer);
-    for (unsigned int index = 0; index < msg->size; ++index) {
-        buffer[size+index] =  msg->data[index];
+    else if(bytes_sent == 0){
+        return CONNECTION_REFUSED;
     }
-};
 
-void buffer_to_message(message_t* msg, const unsigned char* buffer){
-    unsigned char content[12];
-    int count = 0;
-    int index = 0;
-    while(buffer[count] != ':'){
-        content[index] = buffer[count] ;
-        count++;
-        index++;
+    return (int)bytes_sent;
+}
+
+int receive_message(const int * socket_fd, char * message){
+    size_t bytes_read = recv(*socket_fd, message, maximum_buffer_size, 0);
+    if(bytes_read == -1){
+        return RECEIVE_ERROR;
     }
-    content[index] = '\0';
-    msg->type = atoi((char *)content);
-    count++;
-
-    index = 0;
-    while(buffer[count] != ':'){
-        content[index] = buffer[count] ;
-        count++;
-        index++;
+    else if(bytes_read == 0){
+        return CONNECTION_REFUSED;
     }
-    content[index] = '\0';
-    msg->size = atoi((char *)content);
-    count++;
-
-    index = 0;
-    while(buffer[count] != ':'){
-        msg->source[index] = buffer[count] ;
-        count++;
-        index++;
-    }
-    msg->source[index] = '\0';
-    count++;
-
-    for (int i = 0; i < msg->size; ++i) {
-        msg->data[i] = buffer[count+i];
-    }
-};
-
-int error_check(int condition, int check, const char *error_message){
-    if (condition != check) return 1;
-    perror(error_message);
-    return 0;
-};
-
-void decode_server_response(unsigned int type, char* response){
-    switch (type) {
-        case LO_ACK:
-            printf("You are logged in!\n");
-            break;
-        case LO_NAK:
-            printf("Authentication failed. %s\n", response);
-            break;
-        case NS_ACK:
-            printf("You just created a session\n===============================\n");
-            break;
-        case NS_NAK:
-            printf("Failed to create a session, %s", response);
-            break;
-        case JN_ACK:
-            printf("Session Starts!\n===============================\n");
-            break;
-        case JN_NAK:
-            printf("Session not created, %s", response);
-            break;
-        case QU_ACK:
-            printf("%s", response);
-            break;
-        case MESSAGE:
-            printf("%s", response);
-            break;
-        case RG_ACK:
-            printf("You are registered! Welcome!\n");
-            break;
-        case RG_NAK:
-            printf("Registration failed. %s", response);
-            break;
-        case EMPTY:
-            break;
-        default:
-            puts(response);
-            break;
-    }
-};
+    return (int)bytes_read;
+}
 
