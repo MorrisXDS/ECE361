@@ -22,6 +22,7 @@
 
 
 #define NS_ACK 9
+#define NS_NAK 17
 #define MESSAGE 10
 #define QU_ACK 12
 #define INVALID (-1)

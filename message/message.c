@@ -77,6 +77,9 @@ void decode_server_response(unsigned int type, char* response){
         case NS_ACK:
             printf("You just created a session\n===============================\n");
             break;
+        case NS_NAK:
+            printf("Failed to create a session, %s", response);
+            break;
         case JN_ACK:
             printf("Session Starts!\n===============================\n");
             break;

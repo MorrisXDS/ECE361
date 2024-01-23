@@ -200,6 +200,7 @@ void* response_handler(void* arg){
             server_connection_status = 0;
             decode_server_response(msg.type, (char *)msg.data);
         }
+        
         decode_server_response(msg.type, (char *)msg.data);
         
     }

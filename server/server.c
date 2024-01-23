@@ -261,14 +261,20 @@ void* connection_handler(void* accept_fd){
             pthread_mutex_lock(&create_mutex);
             int count = session_list_count(list);
             session_status_t* session = session_list_find(list, (char *)msg.data);
-            if (count == MAX_SESSION_CAPACITY){
-                char message [MAX_DATA] = "sessions at full capacity!";
-                fill_message(&msg, JN_NAK, strlen(message),
+             if (session != NULL){
+                char message [MAX_DATA] = "session already exists!\n";
+                fill_message(&msg, NS_NAK, strlen(message),
                              (char *)msg.source, message);
             }
-            else if (session != NULL){
-                char message [MAX_DATA] = "session already exists!";
-                fill_message(&msg, JN_NAK, strlen(message),
+            else if (strcmp(user_list[return_user_index((char *)msg.source)].session_id
+                        , NOT_IN_SESSION) != 0){
+                char message [MAX_DATA] = "Please leave the current session!\n!";
+                fill_message(&msg, NS_NAK, strlen(message),
+                             (char *)msg.source, message);
+            }
+            else if (count == MAX_SESSION_CAPACITY){
+                char message [MAX_DATA] = "sessions at full capacity!\n";
+                fill_message(&msg, NS_NAK, strlen(message),
                              (char *)msg.source, message);
             }
             else{
