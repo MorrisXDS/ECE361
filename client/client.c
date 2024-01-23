@@ -11,9 +11,10 @@ char message[MAX_DATA];
 int thread_used = 0;
 char get_back = 0;
 char terminal_session = 0;
+char* terminal_buffer;
 
 int main(){
-    char* terminal_buffer = malloc(sizeof(char) * terminal_buffer_size);
+    terminal_buffer = malloc(sizeof(char) * terminal_buffer_size);
     message_t msg;;
     int action_fd;
     ssize_t bytes_sent;
@@ -193,14 +194,15 @@ void* response_handler(void* arg){
         if (msg.type == MESSAGE){
             char display[ACC_BUFFER_SIZE];
             sprintf(display, "%s: %s", (char *)msg.source, (char *)msg.data);
-            decode_server_response(msg.type, display);
+            int type = msg.type;
+            decode_server_response(type, display);
             continue;
         }
         else if(msg.type == RG_NAK) {
             server_connection_status = 0;
             decode_server_response(msg.type, (char *)msg.data);
         }
-        
+
         decode_server_response(msg.type, (char *)msg.data);
         
     }

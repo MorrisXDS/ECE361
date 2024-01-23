@@ -3,6 +3,7 @@
 #include <pthread.h>
 #include "server.h"
 #include "session.h"
+#include <ncurses.h>
 
 
 user_t user_list[LIST_CAPACITY];
@@ -436,6 +437,7 @@ int return_user_index(char * username){
 }
 
 void send_message_in_a_session(message_t * msg, char * session_id){
+    pthread_mutex_lock(&message_mutex);
     char buffer [ACC_BUFFER_SIZE];
     message_to_buffer(msg, (unsigned char *)buffer);
     for (int i = 0; i < user_count; ++i) {
@@ -444,9 +446,8 @@ void send_message_in_a_session(message_t * msg, char * session_id){
             if (user_list[i].socket_fd == OFFLINE) continue;
             printf("%s is sending a message to %s\n",
                    (char*)msg->source, (char *)user_list[i].username);
-            pthread_mutex_lock(&message_mutex);
+            
             ssize_t bytes = send(user_list[i].socket_fd, buffer, ACC_BUFFER_SIZE, 0);
-            pthread_mutex_unlock(&message_mutex);
             if (bytes == 0){
                 printf("connection to %s was closed", (char *)user_list[i].username);
             }
@@ -455,6 +456,7 @@ void send_message_in_a_session(message_t * msg, char * session_id){
             }
         }
     }
+    pthread_mutex_unlock(&message_mutex);
 }
 
 void add_user(char * username, char * password, int socket_fd){
