@@ -22,19 +22,42 @@ void message_to_string(message_t * message, unsigned int message_data_size, char
         strncat(buffer, (char*)message->data, message_data_size);
     }
 }
-void string_to_message(message_t * message, char * data){
-    char * token = strtok(data, ":\0");
-    message->type = atoi(token);
-    token = strtok(NULL, ":\0");
-    message->size = atoi(token);
-    token = strtok(NULL, ":\0");
-    strcpy((char*)message->source, token);
-    token = strtok(NULL, ":\0");
-    if (token == NULL){
-        memset(message->data, 0, sizeof(message->data));
-        return;
+void string_to_message(message_t * message, const char * buffer){
+    unsigned char content[12];
+    int count = 0;
+    int index = 0;
+    while(buffer[count] != ':'){
+        content[index] = buffer[count] ;
+        count++;
+        index++;
     }
-    strcpy((char*)message->data, token);
+    content[index] = '\0';
+    message->type = atoi((char *)content);
+    count++;
+
+    index = 0;
+    while(buffer[count] != ':'){
+        content[index] = buffer[count] ;
+        count++;
+        index++;
+    }
+    content[index] = '\0';
+    message->size = atoi((char *)content);
+    count++;
+
+    index = 0;
+    while(buffer[count] != ':'){
+        message->source[index] = buffer[count] ;
+        count++;
+        index++;
+    }
+    message->source[index] = '\0';
+    count++;
+
+    for (int i = 0; i < message->size; ++i) {
+        message->data[i] = buffer[count+i];
+    }
+
 }
 int send_message(const int * socket_fd, unsigned int message_size, char * message){
     size_t bytes_sent = send(*socket_fd, message, message_size, 0);

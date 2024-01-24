@@ -66,7 +66,7 @@ struct message {
 void fill_message(message_t * message, unsigned int type,
                   unsigned int size, char * source, char * data);
 void message_to_string(message_t * message, unsigned int message_data_size, char * buffer);
-void string_to_message(message_t * message, char * data);
+void string_to_message(message_t * message, const char * buffer);
 int send_message(const int * socket_fd,unsigned int message_size, char * message);
 int receive_message(const int * socket_fd, char * message);
 

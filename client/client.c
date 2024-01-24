@@ -28,9 +28,10 @@ void* server_message_handler(void* socket_fd){
             break;
         }
         else if (bytes_received == CONNECTION_REFUSED) {
-            fprintf(stderr, "You've logged out!\n");
+            fprintf(stderr, "You've been logged out!\n");
             break;
         }
+
 
         string_to_message(&message, buffer);
         if (message.type == LO_ACK){
@@ -60,7 +61,7 @@ void* server_message_handler(void* socket_fd){
             continue;
         }
         if (message.type == MESSAGE && strcmp((char *)message.source, name) != 0){
-                fprintf(stdout, "%s: %s\n", (char *)message.source, (char *)message.data);
+            fprintf(stdout, "%s: %s\n", (char *)message.source, (char *)message.data);
             continue;
         }
         if (message.type == QU_ACK){
@@ -128,7 +129,7 @@ int main(){
             login(&socket_fd, ip_address, port, username, password, &thread);
         }
         //register goes here
-        if (connection_status == 0){
+        if (connection_status == OFF){
             fprintf(stderr, "Please login first\n");
             continue;
         }
@@ -165,8 +166,20 @@ int main(){
             }
 
             list(&socket_fd);
-        } else
-            continue;
+        } else{
+            if (session_status == OFF){
+                fprintf(stderr, "Please join a session first\n");
+                continue;
+            }
+            char message_data[1000];
+            char sending_buffer[maximum_buffer_size];
+            strcpy(message_data, line_buffer);
+            message_t message;
+            fill_message(&message, MESSAGE, strlen(message_data), name, message_data);
+            message_to_string(&message,message.size, sending_buffer);
+            send_message(&socket_fd, maximum_buffer_size, sending_buffer);
+        }
+
 
     }
     pthread_join(thread, NULL);
@@ -231,6 +244,10 @@ void login(int * socket_fd, char * ip_address, char * port, char * username, cha
 void logout(int * socket_fd){
     message_t msg;
     char buffer[maximum_buffer_size];
+    if (session_status == ON){
+        leave_session(socket_fd);
+    }
+    set_connection_status(OFF);
     fill_message(&msg, EXIT, 0, name, NULL);
     message_to_string(&msg, msg.size, buffer);
     unsigned int code = send_message(socket_fd, maximum_buffer_size,buffer);
@@ -240,7 +257,7 @@ void logout(int * socket_fd){
     else if (code == -1){
         printf("Connection error\n");
     }
-};
+}
 
 void join_session(int * socket_fd, char * session_id){
     message_t msg;
@@ -259,6 +276,7 @@ void join_session(int * socket_fd, char * session_id){
 void leave_session(int * socket_fd){
     message_t msg;
     char buffer[maximum_buffer_size];
+    session_status = OFF;
     fill_message(&msg, LEAVE_SESS, 0, name, NULL);
     message_to_string(&msg, msg.size, buffer);
     unsigned int code = send_message(socket_fd, maximum_buffer_size,buffer);
