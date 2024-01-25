@@ -1,6 +1,6 @@
 #ifndef SERVER_H
 #define SERVER_H
-#include "session.h"
+#include "user.h"
 
 //TYPES
 #define SUCCESS_LOGIN 3
@@ -24,11 +24,6 @@
 #define BACKLOG 10
 #define database_path "database.txt"
 
-#define user_t struct user
-
-unsigned int USER_LIST_CAPACITY = 16;
-
-
 int set_up_database();
 int verify_login(unsigned char * username, unsigned char * password);
 char* select_login_message(int index);
@@ -37,9 +32,6 @@ void server_side_user_exit(char* username);
 void server_side_session_join(char * username, char * session_id);
 void server_side_session_leave(char * username);
 void server_side_session_create(char * username, char * session_id);
-int session_name_check(char * session_id);
-void print_active_list(user_list_t * list);
-void get_active_list(user_list_t * list, char * buffer);
 void* connection_handler(void * accept_fd);
 char* session_response_message(int value);
 void send_message_in_a_session(message_t * msg, char * session_id);

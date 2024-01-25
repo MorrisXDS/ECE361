@@ -2,9 +2,20 @@
 #define CLIENT_H
 #include "../message/message.h"
 
-#define command_number 7
 #define maximum_buffer_size 1200
-#define maximum_parameter_size 5
+#define login_parameter_size 5
+#define logout_parameter_size 1
+#define join_session_parameter_size 2
+#define leave_session_parameter_size 1
+#define create_session_parameter_size 2
+#define list_parameter_size 1
+#define quit_parameter_size 1
+
+#define validation_failure 0
+#define validation_success 1
+#define no_expected_length 0
+
+#define login_errors {"client id too long", "password too long", "too many arguments", "too few parameters"};
 
 #define OFF 0
 #define ON 1
@@ -20,5 +31,7 @@ void list(int * socket_fd);
 void terminate_program(int * socket_fd);
 void* server_message_handler(void* socket_fd);
 void set_connection_status(int status);
+int length_validate(int received_length, int expected_length);
+int parameter_count_validate(int received_count, int expected_count);
 
 #endif

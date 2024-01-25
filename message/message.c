@@ -1,27 +1,45 @@
 #include "message.h"
 
-
 void fill_message(message_t * message, unsigned int type,unsigned int size, char * source, char * data){
     message->size = size;
     message->type = type;
     if (size == 0){
         memset(message->data, 0, sizeof(message->data));
     }
-    else{
+    else if(message->type != MESSAGE){
         strcpy((char*)message->data, data);
+    }
+    else {
+        for(int i = 0; i < message->size; ++i) {
+            message->data[i] = data[i];
+            if (data[i] == '\0'){
+                message->data[i] = ' ';
+                continue;
+            }
+        }
+        message->data[message->size-1] = '\0';
     }
     strcpy((char*)message->source, source);
 }
 
-void message_to_string(message_t * message, unsigned int message_data_size, char * buffer){
+int message_to_string(message_t * message, unsigned int message_data_size, char * buffer){
     sprintf(buffer, "%d:%d:%s:", message->type, message_data_size, message->source);
+    int count = strlen(buffer);
     if (message_data_size == 0){
         memset(message->data, 0, sizeof(message->data));
     }
     else{
-        strncat(buffer, (char*)message->data, message_data_size);
+        unsigned long start_index = strlen(buffer);
+        strcat(buffer, (char*)message->data);
+        for (int i = 0; i < message_data_size; ++i) {
+            buffer[start_index+i] = (char)message->data[i];
+            count++;
+        }
+        buffer[count] = '\0';
     }
+    return count;
 }
+
 void string_to_message(message_t * message, const char * buffer){
     unsigned char content[12];
     int count = 0;

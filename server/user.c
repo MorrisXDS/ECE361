@@ -1,162 +1,185 @@
 #include "user.h"
 
-user_list_t* user_list_init(){
-    user_list_t* user_list = (user_list_t*)malloc(sizeof(user_list_t));
-    if (user_list){
-        user_list->head = NULL;
+user_database* user_list_init(){
+    int data_base_initial_capacity = 16;
+    user_database* user_list = malloc(sizeof(user_database));
+    user_list->capacity = data_base_initial_capacity;
+    user_list->count = 0;
+    user_list->user_list = malloc(sizeof(user_t) * user_list->capacity);
+    if (user_list == NULL) {
+        fprintf(stderr, "Failed to allocate memory for user list\n");
+        return NULL;
     }
     return user_list;
 }
 
-int user_list_add_user(user_list_t * list, user_t user) {
-    if (user_list_count(list) >= MAX_USER_COUNT) {
+int create_user(user_t * user, user_t * user_to_add) {
+    strcpy((char*) user->username,(char*) user_to_add->username);
+    strcpy((char*) user->password,(char*) user_to_add->password);
+    strcpy(user->session_id, user_to_add->session_id);
+    strcpy(user->ip_address, user_to_add->ip_address);
+    user->status = user_to_add->status;
+    user->port = user_to_add->port;
+    user->socket_fd = user_to_add->socket_fd;
+    user->role = user_to_add->role;
+    return USER_CREATE_SUCCESS;
+}
+
+int user_list_add_user(user_database* list, user_t* user_data, pthread_mutex_t * mutex) {
+    pthread_mutex_t **mutex_ptr = &mutex;
+    int user_count = user_list_count(list, *mutex_ptr);
+    pthread_mutex_lock(mutex);
+    if (user_count >= MAX_USER_COUNT) {
         fprintf(stderr, "User list is full\n");
+        pthread_mutex_unlock(mutex);
         return USER_LIST_FULL;
     }
-    link_user_t *new_user = (link_user_t *) malloc(sizeof(link_user_t));
-    if (new_user) {
-        new_user->user = malloc(sizeof(user_t));
-        create_user(new_user->user, user.username, user.password,
-                    user.status, user.session_id, user.ip_address,
-                    user.port, user.socket_fd, user.role);
-        new_user->next = list->head;
-        list->head = new_user;
-        fprintf(stdout, "User %s added to user list\n", user.username);
-        fprintf(stdout, "Now there is %d people in session \"%s\"\n", user_list_count(list), new_user->user->session_id);
-        return ADD_USER_SUCCESS;
+    if (user_list_find(list, user_data->username) != NULL) {
+        fprintf(stderr, "User already exists\n");
+        pthread_mutex_unlock(mutex);
+        return USER_ALREADY_EXIST;
     }
-    else
-        fprintf(stderr, "Failed to allocate memory for new user\n");
-    return ADD_USER_FAILURE;
+    user_t new_user = {0};
+    create_user(&new_user, user_data);
+
+    list->user_list[list->count] = new_user;
+    list->count++;
+    fprintf(stdout, "User %s added to user list\n", list->user_list[list->count].username);
+    pthread_mutex_unlock(mutex);
+    return ADD_USER_SUCCESS;
 }
 
-void user_list_remove_by_name(user_list_t *list, char * name){
-    if (name == NULL) {
-        fprintf(stderr, "Name is NULL\n");
-        return;
-    }
-    link_user_t * current = list->head;
-    link_user_t * previous = NULL;
-    while (current) {
-        if (strcmp((char *) current->user->username, name) == 0) {
-            fprintf(stdout, "User %s has been removed to user list\n", name);
-            fprintf(stdout, "Now there is %d people in session \"%s\"\n", user_list_count(list),current->user->session_id);
-            if (previous) {
-                previous->next = current->next;
-            } else {
-                list->head = current->next;
+//will never be called
+void user_list_remove_by_name(user_database* list, char * name, pthread_mutex_t * mutex) {
+    pthread_mutex_t **mutex_ptr = &mutex;
+    pthread_mutex_lock(*mutex_ptr);
+    for (int i = 0; i < list->count; ++i) {
+        if (strcmp((char*) list->user_list[i].username, name) == 0) {
+            fprintf(stdout, "User %s removed from user list\n", list->user_list[i].username);
+            memset(&list->user_list[i], 0, sizeof(user_t));
+            for (int j = i; j < list->count - 1; ++j) {
+                list->user_list[j] = list->user_list[j + 1];
             }
-            free(current->user);
-            free(current);
+            list->count--;
+            pthread_mutex_unlock(mutex);
             return;
         }
-        previous = current;
-        current = current->next;
     }
+    fprintf(stderr, "User %s not found\n", name);
+    pthread_mutex_unlock(*mutex_ptr);
 }
 
-void user_list_remove_all(user_list_t *list){
-    link_user_t * current = list->head;
-    link_user_t * next = NULL;
-    while (current) {
-        next = current->next;
-        free(current->user);
-        free(current);
-        current = next;
-    }
+void user_list_remove_all(user_database* list, pthread_mutex_t * mutex){
+    pthread_mutex_t **mutex_ptr = &mutex;
+    pthread_mutex_lock(*mutex_ptr);
+    free(list->user_list);
     free(list);
+    pthread_mutex_unlock(*mutex_ptr);
 }
 
-void user_list_print(user_list_t *list){
-    link_user_t * current = list->head;
-    while (current) {
-        fprintf(stdout,"%s\n", current->user->username);
-        fprintf(stdout,"%s\n", current->user->session_id);
-        fprintf(stdout,"%d\n", current->user->status);
-        if (current->user->role == ADMIN) {
-            fprintf(stdout,"Admin\n");
-        } else {
-            fprintf(stdout,"User\n");
-        }
-        current = current->next;
+void user_list_print(user_database* list){
+    fprintf(stdout, "User list:\n");
+    fprintf(stdout, "%*s %*s\n", -MAX_NAME, "Name", -MAX_SESSION_LENGTH, "Session ID");
+    for (int i = 0; i < list->count; ++i) {
+        fprintf(stdout, "%*s %*s\n", -MAX_NAME, list->user_list[i].username,
+                -MAX_SESSION_LENGTH, list->user_list[i].session_id);
     }
 }
-user_t *user_list_find(user_list_t *list, unsigned char *username){
-    if (username == NULL) {
-        fprintf(stderr, "Username is NULL\n");
+
+void active_user_list_print(user_database * list){
+    fprintf(stdout, "Active user list:\n");
+    fprintf(stdout, "%*s %*s\n", -MAX_NAME, "Name", -MAX_SESSION_LENGTH, "Session ID");
+    for (int i = 0; i < list->count; ++i) {
+        if (list->user_list[i].status == ONLINE) {
+            fprintf(stdout, "%*s %*s\n", -MAX_NAME, list->user_list[i].username,
+                    -MAX_SESSION_LENGTH, list->user_list[i].session_id);
+        }
+    }
+}
+
+void get_active_user_list(user_database* list, char * active_user_list) {
+    if (list == NULL){
+        fprintf(stderr, "Error: list is NULL.\n");
+        return;
+    }
+    strcat(active_user_list, "Active User List:\n");
+    char message[maximum_buffer_size];
+    sprintf(message, "%*s %*s\n", -MAX_NAME, "Username", -MAX_SESSION_COUNT, "Session ID");
+    strcat(active_user_list, message);
+
+    for (int i = 0; i < list->count; ++i) {
+        if (list->user_list[i].status == ONLINE) {
+            memset(message, 0, sizeof(message));
+            sprintf(message, "%*s %*s\n", -MAX_NAME, list->user_list[i].username, -MAX_SESSION_COUNT, list->user_list[i].session_id);
+            strcat(active_user_list, message);
+        }
+    }
+    fprintf(stdout, "%s", active_user_list);
+
+}
+user_t * user_list_find(user_database* list, unsigned char * username) {
+    if (username == NULL){
+        fprintf(stderr, "Error: username is NULL.\n");
         return NULL;
     }
-    link_user_t * current = list->head;
-    while (current) {
-        if (strcmp((char *) current->user->username, (char *) username) == 0) {
-            return current->user;
+    for (int i = 0; i < list->count; ++i) {
+        if (strcmp((char*) list->user_list[i].username, (char*) username) == 0) {
+            return &list->user_list[i];
         }
-        current = current->next;
     }
     return NULL;
 }
 
-int user_list_count(user_list_t *list){
-    int count = 0;
-    link_user_t * current = list->head;
-    while (current) {
-        count++;
-        current = current->next;
-    }
-    return count;
+int user_list_count(user_database* list, pthread_mutex_t * mutex){
+    pthread_mutex_t **mutex_ptr = &mutex;
+    pthread_mutex_lock(*mutex_ptr);
+    unsigned int count = list->count;
+    pthread_mutex_unlock(*mutex_ptr);
+    return (int)count;
 }
-int user_list_count_by_session_id(user_list_t *list, char *session_id){
-    if (session_id == NULL) {
-        fprintf(stderr, "Session ID is NULL\n");
-        return 0;
-    }
-    if (strcmp((char *) session_id, NOT_IN_SESSION) == 0) {
-        fprintf(stderr, "session does not exist\n");
-        return 0;
+
+int user_list_count_by_session_id(user_database* list, char * session_id, pthread_mutex_t * mutex){
+    pthread_mutex_t **mutex_ptr = &mutex;
+    pthread_mutex_lock(*mutex_ptr);
+    if (strcmp(session_id, NOT_IN_SESSION) == 0){
+        fprintf(stderr, "Error: session_id reserved.\n");
+        return SESSION_NAME_RESERVED;
     }
     int count = 0;
-    link_user_t * current = list->head;
-    while (current) {
-        if (strcmp((char *) current->user->session_id, (char *) session_id) == 0) {
+    for (int i = 0; i < list->count; ++i) {
+        if (strcmp(list->user_list[i].session_id, session_id) == 0) {
             count++;
         }
-        current = current->next;
     }
+    pthread_mutex_unlock(*mutex_ptr);
     return count;
 }
 
-user_t *return_user_by_username(user_list_t *list, unsigned char *username){
-    if (username == NULL) {
-        fprintf(stderr, "Username is NULL\n");
+user_t* return_user_by_username(user_database* list, unsigned char * username){
+    if (username == NULL){
+        fprintf(stderr, "Error: username is NULL.\n");
         return NULL;
     }
-    link_user_t * current = list->head;
-    while (current) {
-        if (strcmp((char *) current->user->username, (char *) username) == 0) {
-            return current->user;
+    for (int i = 0; i < list->count; ++i) {
+        if (strcmp((char*) list->user_list[i].username, (char*) username) == 0) {
+            return &list->user_list[i];
         }
-        current = current->next;
     }
     return NULL;
 }
 
-int create_user(user_t * user, unsigned char * username, unsigned char * password,
-                unsigned char status, char * session_id, char * ip_address, unsigned int port, int socket_fd, char role){
-    strcpy((char *) user->username, (char*)username);
-    strcpy((char *) user->password, (char*)password);
-    if (session_id == NULL) {
-        strcpy((char *) user->session_id, NOT_IN_SESSION);
-    } else {
-        strcpy((char *) user->session_id, session_id);
+void user_exit_current_session(user_database* list, char * username, pthread_mutex_t * mutex){
+    pthread_mutex_lock(mutex);
+    user_t * user = return_user_by_username(list, (unsigned char *) username);
+    char session_id[MAX_SESSION_LENGTH];
+    strcpy(session_id, user->session_id);
+    user->in_session = OFFLINE;
+    user->role = USER;
+    memset(user->session_id, 0, sizeof(user->session_id));
+    strcpy(user->session_id, NOT_IN_SESSION);
+    pthread_mutex_unlock(mutex);
+    if (user_list_count_by_session_id(list, session_id, mutex) == 0){
+        fprintf(stdout, "Session %s is empty and has been dismissed!\n", user->session_id);
     }
-    if (ip_address == NULL) {
-        strcpy((char *) user->ip_address, IP_NOT_FOUND);
-    } else {
-        strcpy((char *) user->ip_address, ip_address);
-    }
-    user->status = status;
-    user->port = port;
-    user->socket_fd = socket_fd;
-    user->role = role;
-    return USER_CREATE_SUCCESS;
+
 }

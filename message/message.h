@@ -26,7 +26,7 @@
 #define MESSAGE 10
 #define QUERY 11
 #define QU_ACK 12
-#define REGISTER 13
+#define CREATE 13
 #define RG_ACK 14
 #define RG_NAK 15
 
@@ -49,6 +49,8 @@
 
 //Struct Macros
 #define MAX_NAME 17
+#define MAX_PASSWORD_LENGTH 20
+#define MAX_SESSION_LENGTH 20
 #define MAX_DATA 1000
 #define ACTUAL_NAME_LENGTH 16
 #define ACC_BUFFER_SIZE 1500
@@ -65,7 +67,7 @@ struct message {
 
 void fill_message(message_t * message, unsigned int type,
                   unsigned int size, char * source, char * data);
-void message_to_string(message_t * message, unsigned int message_data_size, char * buffer);
+int message_to_string(message_t * message, unsigned int message_data_size, char * buffer);
 void string_to_message(message_t * message, const char * buffer);
 int send_message(const int * socket_fd,unsigned int message_size, char * message);
 int receive_message(const int * socket_fd, char * message);

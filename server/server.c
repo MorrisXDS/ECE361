@@ -2,10 +2,11 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include "server.h"
-#include "session.h"
+#include "user.h"
 
-user_list_t* user_list;
-session_list_t* session_list;
+user_database* user_list;
+pthread_mutex_t rw_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t user_list_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 int main(int argc, char* argv[]){
     //cited from Page 21 and Page 28, Beej's Guide to Network Programming, with modifications
@@ -22,10 +23,11 @@ int main(int argc, char* argv[]){
 
     if ((status = getaddrinfo(NULL, argv[1], &hints, &servinfo)) != 0) {
         fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
+        freeaddrinfo(servinfo); // free the linked-list
         exit(1);
     }
     printf("getaddrinfo success\n");
-    
+
     int listen_fd;
 
     // This code is cited from Page 26 of Beej's Guide to Network Programming.
@@ -36,12 +38,12 @@ int main(int argc, char* argv[]){
     // adapted from Page 28 of Beej's Guide to Network Programming.
     for(p = servinfo; p != NULL; p = p->ai_next) {
         if ((listen_fd = socket(p->ai_family, p->ai_socktype,
-                                 p->ai_protocol)) == -1) {
+                                p->ai_protocol)) == -1) {
             perror("client: socket");
             continue;
         }
         if (setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) == -1) {
-            perror("setsockopt"); // If setting the option fails, print an error recevied_message.
+            perror("setsockopt"); // If setting the option fails, print an error received_message.
             exit(1); // Exit the program with an error code.
         }
         if (bind(listen_fd, p->ai_addr, p->ai_addrlen) == -1) {
@@ -66,20 +68,11 @@ int main(int argc, char* argv[]){
         exit(errno);
     }
 
-
     if (set_up_database() != 1){
         perror("init_database");
         exit(errno);
     }
 
-    session_list = session_list_init();
-    if (session_list == NULL){
-        perror("session_list_init");
-        exit(errno);
-    }
-    fprintf(stdout, "session list initialized\n");
-
-    printf("database initialized!\n");
     freeaddrinfo(servinfo); // all done with this structure
     if (listen(listen_fd, BACKLOG) == -1) {
         perror("listen");
@@ -88,7 +81,6 @@ int main(int argc, char* argv[]){
     printf("listen success\n");
     pthread_t thread_pool[THREAD_CAPACITY];
     int thread_count = 0;
-
 
     while (1) {
         if (thread_count == THREAD_CAPACITY) {
@@ -109,9 +101,7 @@ int main(int argc, char* argv[]){
         thread_count++;
     }
     //wait for other threads to finish before exiting
-    user_list_remove_all(user_list);
-    session_list_remove_all(session_list);
-    free(session_list);
+    user_list_remove_all(user_list, &user_list_mutex);
     for (int i = 0; i < thread_count; i++){
         pthread_join(thread_pool[i], NULL);
     }
@@ -121,7 +111,7 @@ int main(int argc, char* argv[]){
 
 void* connection_handler(void* accept_fd){
     int socket_file_descriptor = *(int *)accept_fd;
-    message_t recevied_message, reply_message;
+    message_t received_message, reply_message;
     char buffer[maximum_buffer_size];
     char source[MAX_NAME];
     char connection_status = OFFLINE;
@@ -130,35 +120,38 @@ void* connection_handler(void* accept_fd){
 
     while(1){
         memset(buffer, 0, sizeof(buffer));
-        memset(&recevied_message, 0, sizeof(recevied_message));
+        memset(&received_message, 0, sizeof(received_message));
         memset(&reply_message, 0, sizeof(reply_message));
         size_t bytes_received = receive_message(&socket_file_descriptor, buffer);
-        //size_t bytes_received = recv(socket_file_descriptor, buffer, sizeof(buffer), 0);
+
         if (bytes_received == CONNECTION_REFUSED){
             if (connection_status == ONLINE){
+                printf("user %s disconnected\n", source);
                 server_side_user_exit(source);
             }
             break;
         }
         if (bytes_received == RECEIVE_ERROR){
+            if (connection_status == ONLINE){
+                printf("came across abnormality\n");
+                server_side_user_exit(source);
+            }
             perror("recv");
             break;
         }
 
-        printf("buffer: %s\n", buffer);
-
-        string_to_message(&recevied_message, buffer);
-        if (recevied_message.type == LOGIN){
+        string_to_message(&received_message, buffer);
+        if (received_message.type == LOGIN){
             if (connection_status == ONLINE){
                 message_type = LO_NAK;
                 fill_message(&reply_message, message_type,
                              strlen(select_login_message(ALREADY_LOGIN)),
                              source, select_login_message(ALREADY_LOGIN));
-                message_to_string(&recevied_message, recevied_message.size, buffer);
-                send_message(&socket_file_descriptor,sizeof(buffer), buffer);
+                message_to_string(&received_message, received_message.size, buffer);
+                send_message(&socket_file_descriptor,strlen(buffer), buffer);
                 continue;
             }
-            int reply_type = verify_login(recevied_message.source,recevied_message.data);
+            int reply_type = verify_login(received_message.source,received_message.data);
 
             if (reply_type == SUCCESS_LOGIN)
             {
@@ -166,49 +159,48 @@ void* connection_handler(void* accept_fd){
                 fprintf(stdout, "Verification Success!\n");
                 connection_status = ONLINE;
                 message_type = LO_ACK;
-                strcpy(source, (char*)recevied_message.source);
-                fprintf(stdout, "name identified!!\n");
-                user_log_in(source, (char*)recevied_message.data, ONLINE, &socket_file_descriptor);
+                user_log_in((char *)received_message.source, (char*)received_message.data, ONLINE, &socket_file_descriptor);
+                strcpy(source, (char*)received_message.source);
                 fprintf(stdout, "user %s just landed!!\n", source);
                 fprintf(stdout,"============================\n");
-                fill_message(&reply_message,message_type,0, (char *)recevied_message.source, NULL);
+                fill_message(&reply_message,message_type,0, (char *)received_message.source, NULL);
             }
             else{
                 message_type = LO_NAK;
                 fill_message(&reply_message, message_type,
                              strlen(select_login_message(reply_type)),
-                             (char *)recevied_message.source, select_login_message(reply_type));
+                             (char *)received_message.source, select_login_message(reply_type));
             }
             message_to_string(&reply_message, reply_message.size, buffer);
         }
-        if (recevied_message.type == EXIT){
+        if (received_message.type == EXIT){
             server_side_user_exit(source);
             break;
         }
-        if (recevied_message.type == JOIN){
-            server_side_session_join(source, (char*)recevied_message.data);
+        if (received_message.type == JOIN){
+            server_side_session_join(source, (char*)received_message.data);
             continue;
         }
-        if (recevied_message.type == NEW_SESS){
-            server_side_session_create(source, (char*)recevied_message.data);
+        if (received_message.type == NEW_SESS){
+            server_side_session_create(source, (char*)received_message.data);
             continue;
         }
-        if (recevied_message.type == LEAVE_SESS){
+        if (received_message.type == LEAVE_SESS){
             server_side_session_leave(source);
             continue;
         }
-        if (recevied_message.type == QUERY){
+        if (received_message.type == QUERY){
             char list[maximum_buffer_size];
-            get_active_list(user_list, list);
+            get_active_user_list(user_list, list);
             fill_message(&reply_message, QU_ACK,
-                         strlen(list), (char *)recevied_message.source, list);
+                         strlen(list), (char *)received_message.source, list);
             message_to_string(&reply_message, reply_message.size, buffer);
         }
-        if (recevied_message.type == MESSAGE){
+        if (received_message.type == MESSAGE){
             fill_message(&reply_message, MESSAGE,
-                         strlen((char*)recevied_message.data),
-                         (char *)recevied_message.source, (char*)recevied_message.data);
-            user_t* sedning_user = return_user_by_username(user_list, recevied_message.source);
+                         received_message.size,
+                         (char *)received_message.source, (char*)received_message.data);
+            user_t* sedning_user = return_user_by_username(user_list, received_message.source);
             send_message_in_a_session(&reply_message, sedning_user->session_id);
             continue;
         }
@@ -216,7 +208,6 @@ void* connection_handler(void* accept_fd){
 
 
         size_t bytes_sent = send_message(&socket_file_descriptor,strlen(buffer),buffer);
-        fprintf(stdout, "bytes sent: %zu\n", bytes_sent);
         if (bytes_received == CONNECTION_REFUSED){
             if (connection_status == ONLINE){
                 server_side_user_exit(source);
@@ -233,35 +224,6 @@ void* connection_handler(void* accept_fd){
     close(socket_file_descriptor);
     return NULL;
 }
-
-int set_up_database(){
-    fprintf(stdout, "Setting up database...\n");
-    FILE *file_pointer;
-    file_pointer = fopen(database_path, "r");
-    if (file_pointer == NULL){
-        free(user_list);
-        perror("Error opening file");
-        fclose(file_pointer);
-        return FILE_ERROR;
-    }
-    char buffer[maximum_buffer_size];
-    char username[MAX_NAME];
-    char password[MAX_PASSWORD];
-    while(fscanf(file_pointer, "\"%[^|\"]\":\"%[^|\"]\"\n", username, password) != EOF){
-        user_t temp_user = {0};
-        create_user(&temp_user,(unsigned char*)username,
-                    (unsigned char*)password, OFFLINE,
-                    NOT_IN_SESSION, NULL, OFFLINE,OFFLINE, USER);
-        user_t temp = {0};
-
-        create_user(&temp,(unsigned char*)username,
-                    (unsigned char*)password, OFFLINE,
-                    NOT_IN_SESSION, NULL, OFFLINE,OFFLINE, USER);
-        user_list_add_user(user_list, temp_user);
-    }
-    return 1;
-}
-
 
 int verify_login(unsigned char * username, unsigned char * password){
     if (user_list == NULL){
@@ -282,10 +244,6 @@ int verify_login(unsigned char * username, unsigned char * password){
 }
 
 void server_side_user_exit(char * username){
-    if (username == NULL){
-        fprintf(stderr, "Error: username is NULL.\n");
-        return;
-    }
     user_t* user = user_list_find(user_list, (unsigned char*)username);
     if (user == NULL){
         fprintf(stderr, "Error: user is NULL.\n");
@@ -293,163 +251,129 @@ void server_side_user_exit(char * username){
     }
     fprintf(stdout,"============================\n");
     printf("user %s is exiting.\n", user->username);
+    if (user->in_session == ONLINE){
+        server_side_session_leave(username);
+    }
+    pthread_mutex_lock(&user_list_mutex);
     user->status = OFFLINE;
     user->socket_fd = OFFLINE;
     user->port = OFFLINE;
-    user->role = USER;
-    session_list_remove_user(session_list,(char*)user->session_id, (char*)user->username);
-    session_status_t* session = session_list_find(session_list, (char*)user->session_id);
-    if (session != NULL){
-        if (session->user_list->head == NULL){
-            session_list_remove(session_list, session);
-        }
-    }
-    strcpy((char*)user->session_id, NOT_IN_SESSION);
     memset((char*)user->ip_address, 0, sizeof(user->ip_address));
-    strcmp((char*)user->session_id, NOT_IN_SESSION);
+    memset((char*)user->ip_address, 0, sizeof(user->ip_address));
     fprintf(stdout,"============================\n");
+    pthread_mutex_unlock(&user_list_mutex);
+    user_list_print(user_list);
 }
 
 
 
 
 void server_side_session_create(char * username, char * session_id){
+    pthread_mutex_lock(&user_list_mutex);
     user_t* user = user_list_find(user_list, (unsigned char*)username);
     if (user == NULL){
         fprintf(stderr, "Error: user is NULL.\n");
+        pthread_mutex_unlock(&user_list_mutex);
         return;
     }
-    session_status_t status;
-    create_session_status(&status, session_id, user);
-    printf("user %s is creating session %s.\n", user->username, session_id);
-    int code = session_list_insert_at_tail(session_list, &status);
-    printf("code: %d\n", code);
     message_t reply_message;
     char buffer[maximum_buffer_size];
-    if (code == 0){
-        char name[maximum_buffer_size];
-        sprintf(name, "================================\n"
-                      "You have just created session %s\n. You become the admin", session_id);
-        fill_message(&reply_message, NS_ACK, strlen(name), username, name);
+    int count = user_list_count_by_session_id(user_list, session_id, &rw_mutex);
+
+    if(user->in_session == ONLINE){
+        fill_message(&reply_message, JN_NAK,
+                     strlen(session_response_message(USER_NAME_IN_SESSION)),
+                     username,session_response_message(USER_NAME_IN_SESSION));
+        message_to_string(&reply_message, reply_message.size, buffer);
+        send_message(&user->socket_fd, strlen(buffer), buffer);
+        pthread_mutex_unlock(&user_list_mutex);
+        return;
+    }
+    else if (count == 0){
+        memset((char*)user->session_id, 0, sizeof(user->session_id));
         strcpy((char*)user->session_id, session_id);
-        fprintf(stdout, "user session has been updated to %s.\n",session_id);
+        user->in_session = ONLINE;
         user->role = ADMIN;
+        fill_message(&reply_message, NS_ACK,
+                     strlen(session_id),
+                     username,session_id);
+    }
+    else if (count == SESSION_NAME_RESERVED){
+        fill_message(&reply_message, NEW_SESS,
+                     strlen(session_response_message(SESSION_NAME_RESERVED)),
+                     username,session_response_message(SESSION_NAME_RESERVED));
     }
     else{
         fill_message(&reply_message, NEW_SESS,
-                     strlen(session_response_message(code)), username,
-                     session_response_message(code));
+                     strlen(session_response_message(SESSION_EXISTS)),
+                     username,session_response_message(SESSION_EXISTS));
     }
-    message_to_string(&reply_message, reply_message.size, buffer);
-    send_message(&user->socket_fd, sizeof (buffer), buffer);
 
+    message_to_string(&reply_message, reply_message.size, buffer);
+    send_message(&user->socket_fd, strlen(buffer), buffer);
+    pthread_mutex_unlock(&user_list_mutex);
 }
 
 void server_side_session_join(char * username, char * session_id){
+    pthread_mutex_lock(&user_list_mutex);
     user_t* user = user_list_find(user_list, (unsigned char*)username);
     if (user == NULL){
         fprintf(stderr, "Error: user is NULL.\n");
+        pthread_mutex_unlock(&user_list_mutex);
         return;
     }
-    session_status_t* status;
     message_t reply_message;
     char buffer[maximum_buffer_size];
 
-    printf("session_id: %s\n", session_id);
-    status = session_list_find(session_list, session_id);
+    int session_user_count = user_list_count_by_session_id(user_list, session_id, &rw_mutex);
 
-    if (status == NULL){
-        fprintf(stderr, "Error: session is empty.\n");
-        return;
-    }
-    if (strcmp((char*)user->session_id, NOT_IN_SESSION) != 0){
-        fprintf(stderr, "Error: user is already in a session.\n");
+    if (user->in_session == ONLINE){
+        printf("user %s is already in a session.\n", user->username);
         fill_message(&reply_message, JN_NAK,
-                     strlen(session_response_message(SESSION_ADD_USER_FAILURE)),
-                     username,session_response_message(SESSION_ADD_USER_FAILURE));
-        message_to_string(&reply_message, reply_message.size, buffer);
-        send_message(&user->socket_fd, sizeof(buffer), buffer);
-        return;
+                     strlen(session_response_message(USER_NAME_IN_SESSION)),
+                     username,session_response_message(USER_NAME_IN_SESSION));
     }
-    int code = session_list_session_add_user(session_list, session_id, user);
-
-    if (code == SESSION_ADD_USER_SUCCESS){
-        fill_message(&reply_message, JN_ACK,
-                     sizeof(session_id), username, session_id);
-        strcpy((char*)user->session_id, session_id);
+    else if (session_user_count == 0){
+        printf("session %s does not exist.\n", session_id);
+        fill_message(&reply_message, JN_NAK,
+                     strlen(session_response_message(SESSION_NAME_INVALID)),
+                     username,session_response_message(SESSION_NAME_INVALID));
+    }
+    else if (session_user_count == MAX_SESSION_USER){
+        printf("session %s is full!\n", session_id);
+        fill_message(&reply_message, JN_NAK,
+                     strlen(session_response_message(SESSION_AT_FULL_CAPACITY)),
+                     username,session_response_message(SESSION_AT_FULL_CAPACITY));
     }
     else{
-        fill_message(&reply_message, JN_NAK,
-                     strlen(session_response_message(code)), (char*)user->username,
-                     session_response_message(code));
+        memset((char*)user->session_id, 0, sizeof(user->session_id));
+        strcpy((char*)user->session_id, session_id);
+        user->in_session = ONLINE;
+        printf("user %s joined session %s.\n", user->username, user->session_id);
+        fill_message(&reply_message, JN_ACK,
+                     strlen(session_id),
+                     username,session_id);
     }
-    message_to_string(&reply_message, reply_message.size, buffer);
-    send_message(&user->socket_fd, sizeof(buffer), buffer);
 
+    message_to_string(&reply_message, reply_message.size, buffer);
+    send_message(&user->socket_fd, strlen(buffer), buffer);
+    pthread_mutex_unlock(&user_list_mutex);
 }
 
 void server_side_session_leave(char *username){
+    pthread_mutex_lock(&user_list_mutex);
     user_t* user = user_list_find(user_list, (unsigned char*)username);
     if (user == NULL){
         fprintf(stderr, "Error: user is NULL.\n");
         return;
     }
-    if (strcmp((char*)user->session_id, NOT_IN_SESSION) != 0){
-        session_list_remove_user(session_list, user->session_id, (char *)user->username);
-        user_t* log_in_user = user_list_find(user_list, (unsigned char*)username);
-        log_in_user->role = USER;
-        strcpy((char*)log_in_user->session_id, NOT_IN_SESSION);
+    if (user->in_session == OFFLINE){
         return;
     }
+    user_exit_current_session(user_list, username, &rw_mutex);
+    pthread_mutex_unlock(&user_list_mutex);
 }
 
-
-//int session_name_check(char * session_id);
-void print_active_list(user_list_t * list){
-    if (list == NULL){
-        fprintf(stderr, "Error: list is NULL.\n");
-        return;
-    }
-    fprintf(stdout, "============================\n");
-    fprintf(stdout, "Ative User List:\n");
-    fprintf(stdout, "%*s %*s\n", -MAX_NAME, "Username", -MAX_SESSION_NAME, "Session ID");
-
-    link_user_t * current = list->head;
-    while(current != NULL){
-        if (current->user->status == OFFLINE){
-            current = current->next;
-            continue;
-        }
-        printf("%*s", -MAX_NAME, current->user->username);
-        printf("%*s\n", -MAX_SESSION_NAME, current->user->session_id);
-        current = current->next;
-    }
-}
-
-void get_active_list(user_list_t * list, char * buffer){
-    if (list == NULL){
-        fprintf(stderr, "Error: list is NULL.\n");
-        return;
-    }
-    strcat(buffer, "Active User List:\n");
-    char message[maximum_buffer_size];
-    sprintf(message, "%*s %*s\n", -MAX_NAME, "Username", -MAX_SESSION_NAME, "Session ID");
-    strcat(buffer, message);
-    link_user_t * current = list->head;
-    while(current != NULL){
-        if (current->user->status == OFFLINE){
-            current = current->next;
-            continue;
-        }
-        memset(message, 0, sizeof(message));
-        sprintf(message, "%*s %*s\n", -MAX_NAME,
-                current->user->username,
-                -MAX_SESSION_NAME, current->user->session_id);
-        strcat(buffer, message);
-        current = current->next;
-    }
-    fprintf(stdout, "%s", buffer);
-}
 
 char* select_login_message(int index){
     if(index == USERNAME_ERROR)
@@ -481,45 +405,70 @@ void user_log_in(char * username, char * password, unsigned char status, int* so
     user->port = ntohs(s->sin_port);
     inet_ntop(AF_UNSPEC, &s->sin_addr, user->ip_address,
               sizeof (user->ip_address));
-    print_active_list(user_list);
+    active_user_list_print(user_list);
 }
 
 char* session_response_message(int value){
-    if (value == SESSION_NAME_INVALID)
-        return "Session name is invalid!.";
-    else if (value == SESSION_NAME_RESERVED)
+    if (value == SESSION_NAME_RESERVED)
         return "Session name is reserved!.";
-    else if (value == SESSION_NAME_TOO_LONG)
-        return "Session name is too long!.";
-    else if (value == SESSION_LIST_FULL)
-        return "Session list is full!.";
-    else if (value == SESSION_EXISTS)
+    if (value == SESSION_NAME_INVALID)
+        return "Session name is not found!.";
+    if (value == SESSION_AT_FULL_CAPACITY)
+        return "Session you tried to join was full!.";
+    if (value == SESSION_EXISTS)
         return "Session already exists!.";
-    else if (value == SESSION_CREATE_FAIL)
-        return "Session creation failed!.";
-    else if (value == SESSION_ADD_USER_SUCCESS)
-        return "User added to session successfully!.";
-    else if (value == SESSION_ADD_USER_FAILURE)
-        return "failed to add the user in the section!.";
+    if (value == SESSION_ADD_USER_FAILURE)
+        return "failed to add the user in the session!.";
+    if (value == USER_NAME_IN_SESSION)
+        return "Please leave the session before joining/createing another one!.";
     else
         return NULL;
 }
 
-void send_message_in_a_session(message_t * msg, char * session_id){
+void send_message_in_a_session(message_t * msg, char * session_id ){
+    pthread_mutex_lock(&user_list_mutex);
     char buffer [ACC_BUFFER_SIZE];
-    message_to_string(msg, msg->size, buffer);
-    session_status_t * session = session_list_find(session_list, session_id);
-    if (session == NULL){
-        fprintf(stderr, "Error: session is NULL.\n");
-        return;
+    int size = message_to_string(msg, msg->size, buffer);
+    for (int i = 0; i < user_list->count; ++i) {
+        if (user_list->user_list[i].status == OFFLINE)
+            continue;
+        if(user_list->user_list[i].in_session == OFFLINE)
+            continue;
+        if (strcmp((char*)user_list->user_list[i].session_id, session_id) == 0){
+            send_message(&(user_list->user_list[i].socket_fd), strlen(buffer), buffer);
+        }
     }
-    link_user_t * current_user = session->user_list->head;
-    if (current_user == NULL){
-        fprintf(stderr, "Error: No online user to talk to !.\n");
-        return;
+    pthread_mutex_unlock(&user_list_mutex);
+}
+
+
+int set_up_database(){
+    fprintf(stdout, "Setting up database...\n");
+    FILE *file_pointer;
+    file_pointer = fopen(database_path, "r");
+    if (file_pointer == NULL){
+        free(user_list);
+        perror("Error opening file");
+        fclose(file_pointer);
+        return FILE_ERROR;
     }
-    while (current_user != NULL){
-        send_message(&current_user->user->socket_fd, sizeof(buffer), buffer);
-        current_user = current_user->next;
+    char buffer[maximum_buffer_size];
+    char username[MAX_NAME];
+    char password[MAX_PASSWORD];
+    while(fscanf(file_pointer, "\"%[^|\"]\":\"%[^|\"]\"\n", username, password) != EOF){
+        user_t new_user = {0};
+        strcpy((char*)new_user.username, username);
+        strcpy((char*)new_user.password, password);
+        new_user.status = OFFLINE;
+        new_user.in_session = OFFLINE;
+        new_user.role = USER;
+        new_user.socket_fd = OFFLINE;
+        new_user.port = OFFLINE;
+        strcpy((char*)new_user.session_id, NOT_IN_SESSION);
+        memset((char*)new_user.ip_address, 0, sizeof(new_user.ip_address));
+        user_t temp = {0};
+        user_list_add_user(user_list, &new_user, &rw_mutex);
     }
+    user_list_print(user_list);
+    return 1;
 }
