@@ -9,6 +9,10 @@ pthread_mutex_t rw_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t user_list_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 int main(int argc, char* argv[]){
+    if (argc != 2){
+        fprintf(stderr, "Usage: server <port>\n");
+        exit(1);
+    }
     //cited from Page 21 and Page 28, Beej's Guide to Network Programming, with modifications
     int status;
     struct sockaddr_storage their_addr;
@@ -85,10 +89,6 @@ int main(int argc, char* argv[]){
     while (1) {
         if (thread_count == THREAD_CAPACITY) {
             printf("thread pool full\n");
-            printf("breaking the while loop!\n");
-            for (int i = 0; i < thread_count; i++){
-                pthread_join(thread_pool[i], NULL);
-            }
             break;
         }
         puts("accepting connections...");
@@ -107,6 +107,9 @@ int main(int argc, char* argv[]){
     }
     //wait for other threads to finish before exiting
     user_list_remove_all(user_list, &user_list_mutex);
+    for (int i = 0; i < thread_count; i++){
+        pthread_join(thread_pool[i], NULL);
+    }
     pthread_exit(NULL);
     return 1;
 }
@@ -196,7 +199,6 @@ void* connection_handler(void* accept_fd){
         }
         if (received_message.type == QUERY){
             char list[maximum_buffer_size];
-            memset(list, 0, sizeof(list));
             get_active_user_list(user_list, list);
             fill_message(&reply_message, QU_ACK,
                          strlen(list), (char *)received_message.source, list);
@@ -469,6 +471,7 @@ int set_up_database(){
         new_user.port = OFFLINE;
         strcpy((char*)new_user.session_id, NOT_IN_SESSION);
         memset((char*)new_user.ip_address, 0, sizeof(new_user.ip_address));
+        user_t temp = {0};
         user_list_add_user(user_list, &new_user, &rw_mutex);
     }
     return 1;
@@ -478,7 +481,7 @@ char* get_user_ip_address_and_port(int * socket_fd,  unsigned int * port){
     int socket = *socket_fd;
     struct sockaddr_storage user_addr;
     char* ip_address_buffer = (char*)malloc(sizeof(char)*INET6_ADDRSTRLEN);
-    socklen_t user_addrLen = sizeof(user_addr);
+    socklen_t user_addrLen;
 
     if (getpeername(socket, (struct sockaddr *)&user_addr, &user_addrLen) == 0) {
         if (user_addr.ss_family == AF_INET) {
