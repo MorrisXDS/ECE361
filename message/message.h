@@ -35,24 +35,13 @@
 #define RECEIVE_ERROR (-1)
 #define SEND_ERROR (-1)
 #define CONNECTION_REFUSED (0)
-#define FD_ERROR (-1)
-#define BIND_ERROR (-1)
-#define LISTEN_ERROR (-1)
-#define CONNECT_ERROR (-1)
-#define ACCEPT_ERROR (-1)
 
-#define SETUP_ERROR (-1)
-#define GETLINE_ERROR (-1)
-#define COMMAND_NOT_FOUND (-1)
-#define SN_NADMIN 21
-#define CONVERT_ERROR (-1)
 
 //Struct Macros
 #define MAX_NAME 17
 #define MAX_PASSWORD_LENGTH 20
 #define MAX_SESSION_LENGTH 20
 #define MAX_DATA 1000
-#define ACTUAL_NAME_LENGTH 16
 #define ACC_BUFFER_SIZE 1500
 #define message_t struct message
 

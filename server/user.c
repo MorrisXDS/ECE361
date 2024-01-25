@@ -44,7 +44,7 @@ int user_list_add_user(user_database* list, user_t* user_data, pthread_mutex_t *
 
     list->user_list[list->count] = new_user;
     list->count++;
-    fprintf(stdout, "User %s added to user list\n", list->user_list[list->count].username);
+    fprintf(stdout, "User %s added to user list\n", list->user_list[list->count-1].username);
     pthread_mutex_unlock(mutex);
     return ADD_USER_SUCCESS;
 }
@@ -97,9 +97,13 @@ void active_user_list_print(user_database * list){
     }
 }
 
-void get_active_user_list(user_database* list, char * active_user_list) {
+void get_active_user_list(user_database* list, char * active_user_list,  pthread_mutex_t *mutex) {
     if (list == NULL){
         fprintf(stderr, "Error: list is NULL.\n");
+        return;
+    }
+    if(active_user_list == NULL){
+        fprintf(stderr, "parameter empty!.\n");
         return;
     }
     strcat(active_user_list, "Active User List:\n");

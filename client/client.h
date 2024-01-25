@@ -10,6 +10,7 @@
 #define create_session_parameter_size 2
 #define list_parameter_size 1
 #define quit_parameter_size 1
+#define create_parameter_size 5
 
 #define validation_failure 0
 #define validation_success 1
@@ -22,6 +23,7 @@
 
 
 void login(int * socket_fd, char * ip_address, char * port, char * username, char * password, pthread_t* thread);
+void user_registration(int * socket_fd, char * ip_address, char * port, char * username, char * password, pthread_t* thread);
 void logout(int * socket_fd);
 void join_session(int * socket_fd, char * session_id);
 void leave_session(int * socket_fd);

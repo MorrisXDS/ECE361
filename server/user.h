@@ -60,7 +60,7 @@ void user_list_remove_by_name(user_database * list, char * name, pthread_mutex_t
 void user_list_remove_all(user_database * list, pthread_mutex_t * mutex);
 void user_list_print(user_database * list);
 void active_user_list_print(user_database * list);
-void get_active_user_list(user_database* list,char * active_user_list);
+void get_active_user_list(user_database* list, char * active_user_list,  pthread_mutex_t *mutex);
 user_t * user_list_find(user_database* list, unsigned char * username);
 int user_list_count(user_database* list, pthread_mutex_t * mutex);
 int user_list_count_by_session_id(user_database* list, char * session_id, pthread_mutex_t * mutex);

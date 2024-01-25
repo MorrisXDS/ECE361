@@ -89,6 +89,9 @@ int main(int argc, char* argv[]){
     while (1) {
         if (thread_count == THREAD_CAPACITY) {
             printf("thread pool full\n");
+            for (int i = 0; i < thread_count; i++){
+                pthread_join(thread_pool[i], NULL);
+            }
             break;
         }
         puts("accepting connections...");
@@ -107,10 +110,6 @@ int main(int argc, char* argv[]){
     }
     //wait for other threads to finish before exiting
     user_list_remove_all(user_list, &user_list_mutex);
-    for (int i = 0; i < thread_count; i++){
-        pthread_join(thread_pool[i], NULL);
-    }
-    pthread_exit(NULL);
     return 1;
 }
 
@@ -120,8 +119,6 @@ void* connection_handler(void* accept_fd){
     char buffer[maximum_buffer_size];
     char source[MAX_NAME];
     char server_connection_status = OFFLINE;
-    unsigned message_type = 999;
-    user_t* user;
 
     while(1){
         memset(buffer, 0, sizeof(buffer));
@@ -141,43 +138,60 @@ void* connection_handler(void* accept_fd){
                 printf("came across abnormality\n");
                 server_side_user_exit(source);
             }
-            perror("recv");
+            perror("receive failed");
             break;
         }
 
+        printf("received message: %s\n", buffer);
         string_to_message(&received_message, buffer);
 
         if (received_message.type == LOGIN){
             int reply_type = verify_login(received_message.source,received_message.data);
-            if (server_connection_status == ONLINE){
-                message_type = LO_NAK;
-                fill_message(&reply_message, message_type,
-                             strlen(select_login_message(ALREADY_LOGIN)),
-                             source, select_login_message(ALREADY_LOGIN));
-                message_to_string(&received_message, received_message.size, buffer);
-                send_message(&socket_file_descriptor,strlen(buffer), buffer);
-                continue;
-            }
-
-
+//            if (server_connection_status == ONLINE){
+//                fill_message(&reply_message, LO_NAK,
+//                             strlen(select_login_message(ALREADY_LOGIN)),
+//                             source, select_login_message(ALREADY_LOGIN));
+//                message_to_string(&received_message, received_message.size, buffer);
+//                send_message(&socket_file_descriptor,strlen(buffer), buffer);
+//                continue;
+//            }
 
             if (reply_type == SUCCESS_LOGIN)
             {
                 fprintf(stdout,"============================\n");
                 fprintf(stdout, "Verification Success!\n");
                 server_connection_status = ONLINE;
-                message_type = LO_ACK;
-                user_login((char *)received_message.source, (char*)received_message.data, ONLINE, &socket_file_descriptor);
+                user_login((char *)received_message.source, ONLINE, &socket_file_descriptor);
                 strcpy(source, (char*)received_message.source);
                 fprintf(stdout, "user %s just landed!!\n", source);
                 fprintf(stdout,"============================\n");
-                fill_message(&reply_message,message_type,0, (char *)received_message.source, NULL);
+                fill_message(&reply_message,LO_ACK,0, (char *)received_message.source, NULL);
             }
             else{
-                message_type = LO_NAK;
-                fill_message(&reply_message, message_type,
+                fill_message(&reply_message, LO_NAK,
                              strlen(select_login_message(reply_type)),
                              (char *)received_message.source, select_login_message(reply_type));
+            }
+            message_to_string(&reply_message, reply_message.size, buffer);
+        }
+        if (received_message.type == CREATE){
+            int reply_type = user_registration((char *)received_message.source,
+                                               (char *)received_message.data,
+                                               socket_file_descriptor);
+            if (reply_type == ADD_USER_SUCCESS)
+            {
+                fprintf(stdout,"============================\n");
+                fprintf(stdout, "Registration Success!\n");
+                server_connection_status = ONLINE;
+                strcpy(source, (char*)received_message.source);
+                fprintf(stdout, "user %s just landed!!\n", source);
+                fprintf(stdout,"============================\n");
+                fill_message(&reply_message,RG_ACK,0, (char *)received_message.source, NULL);
+            }
+            else{
+                fill_message(&reply_message, RG_NAK,
+                             strlen(user_registration_message(reply_type)),
+                             (char *)received_message.source, user_registration_message(reply_type));
             }
             message_to_string(&reply_message, reply_message.size, buffer);
         }
@@ -199,7 +213,8 @@ void* connection_handler(void* accept_fd){
         }
         if (received_message.type == QUERY){
             char list[maximum_buffer_size];
-            get_active_user_list(user_list, list);
+            memset(list, 0, sizeof(list));
+            get_active_user_list(user_list, list, &rw_mutex);
             fill_message(&reply_message, QU_ACK,
                          strlen(list), (char *)received_message.source, list);
             message_to_string(&reply_message, reply_message.size, buffer);
@@ -208,23 +223,20 @@ void* connection_handler(void* accept_fd){
             fill_message(&reply_message, MESSAGE,
                          received_message.size,
                          (char *)received_message.source, (char*)received_message.data);
-            user_t* sedning_user = return_user_by_username(user_list, received_message.source);
-            send_message_in_a_session(&reply_message, sedning_user->session_id);
+            user_t* sending_user = return_user_by_username(user_list, received_message.source);
+            send_message_in_a_session(&reply_message, sending_user->session_id);
             continue;
         }
 
-
-
         size_t bytes_sent = send_message(&socket_file_descriptor,strlen(buffer),buffer);
-        if (bytes_received == CONNECTION_REFUSED){
+        if (bytes_sent == CONNECTION_REFUSED){
             if (server_connection_status == ONLINE){
                 server_side_user_exit(source);
             }
             break;
-            break;
         }
-        if (bytes_received == SEND_ERROR){
-            perror("recv");
+        if (bytes_sent == SEND_ERROR){
+            perror("receive failed");
             break;
         }
 
@@ -271,11 +283,7 @@ void server_side_user_exit(char * username){
     memset((char*)user->ip_address, 0, sizeof(user->ip_address));
     fprintf(stdout,"============================\n");
     pthread_mutex_unlock(&user_list_mutex);
-    user_list_print(user_list);
 }
-
-
-
 
 void server_side_session_create(char * username, char * session_id){
     pthread_mutex_lock(&user_list_mutex);
@@ -386,7 +394,7 @@ void server_side_session_leave(char *username){
 
 char* select_login_message(int index){
     if(index == USERNAME_ERROR)
-        return "Your username does not appear to be valie.";
+        return "Your username does not appear to be valid.";
     else if(index == PASSWORD_ERROR)
         return "Your password is incorrect.";
     else if (index == ALREADY_LOGIN)
@@ -397,7 +405,7 @@ char* select_login_message(int index){
         return NULL;
 }
 
-void user_login(char * username, char * password, unsigned char status, int* socket_fd){
+void user_login(char * username, unsigned char status, const int* socket_fd){
     pthread_mutex_lock(&user_list_mutex);
     user_t* user = user_list_find(user_list, (unsigned char*)username);
     if (user == NULL){
@@ -405,7 +413,7 @@ void user_login(char * username, char * password, unsigned char status, int* soc
         return;
     }
     user->socket_fd = *socket_fd;
-    user->status = ONLINE;
+    user->status = status;
     char* IP_ADDR_BUFFER;
     IP_ADDR_BUFFER = get_user_ip_address_and_port(&user->socket_fd, &user->port);
     strcpy(user->ip_address, IP_ADDR_BUFFER);
@@ -414,26 +422,28 @@ void user_login(char * username, char * password, unsigned char status, int* soc
 }
 
 char* session_response_message(int value){
-    if (value == SESSION_NAME_RESERVED)
-        return "Session name is reserved!.";
-    if (value == SESSION_NAME_INVALID)
-        return "Session name is not found!.";
-    if (value == SESSION_AT_FULL_CAPACITY)
-        return "Session you tried to join was full!.";
-    if (value == SESSION_EXISTS)
-        return "Session already exists!.";
-    if (value == SESSION_ADD_USER_FAILURE)
-        return "failed to add the user in the session!.";
-    if (value == USER_NAME_IN_SESSION)
-        return "Please leave the session before joining/createing another one!.";
-    else
-        return NULL;
+    switch (value) {
+        case SESSION_NAME_RESERVED:
+            return "Session name is reserved!.";
+        case SESSION_NAME_INVALID:
+            return "Session name is not found!.";
+        case SESSION_AT_FULL_CAPACITY:
+            return "Session you tried to join was full!.";
+        case SESSION_EXISTS:
+            return "Session already exists!.";
+        case SESSION_ADD_USER_FAILURE:
+            return "failed to add the user in the session!.";
+        case USER_NAME_IN_SESSION:
+            return "Please leave the session before joining/creating another one!.";
+        default:
+            return NULL;
+    }
 }
 
 void send_message_in_a_session(message_t * msg, char * session_id ){
     pthread_mutex_lock(&user_list_mutex);
     char buffer [ACC_BUFFER_SIZE];
-    int size = message_to_string(msg, msg->size, buffer);
+    message_to_string(msg, msg->size, buffer);
     for (int i = 0; i < user_list->count; ++i) {
         if (user_list->user_list[i].status == OFFLINE)
             continue;
@@ -457,7 +467,6 @@ int set_up_database(){
         fclose(file_pointer);
         return FILE_ERROR;
     }
-    char buffer[maximum_buffer_size];
     char username[MAX_NAME];
     char password[MAX_PASSWORD];
     while(fscanf(file_pointer, "\"%[^|\"]\":\"%[^|\"]\"\n", username, password) != EOF){
@@ -471,13 +480,12 @@ int set_up_database(){
         new_user.port = OFFLINE;
         strcpy((char*)new_user.session_id, NOT_IN_SESSION);
         memset((char*)new_user.ip_address, 0, sizeof(new_user.ip_address));
-        user_t temp = {0};
         user_list_add_user(user_list, &new_user, &rw_mutex);
     }
     return 1;
 }
 
-char* get_user_ip_address_and_port(int * socket_fd,  unsigned int * port){
+char* get_user_ip_address_and_port(const int * socket_fd,  unsigned int * port){
     int socket = *socket_fd;
     struct sockaddr_storage user_addr;
     char* ip_address_buffer = (char*)malloc(sizeof(char)*INET6_ADDRSTRLEN);
@@ -505,22 +513,29 @@ char* get_user_ip_address_and_port(int * socket_fd,  unsigned int * port){
     return ip_address_buffer;
 }
 
-void user_registration(char * username, char * password, int socket_fd){
+int user_registration(char * username, char * password, int socket_fd){
     pthread_mutex_lock(&user_list_mutex);
+    user_t* user = user_list_find(user_list, (unsigned char*)username);
     user_t new_user = {0};
     strcpy((char*)new_user.username, username);
     strcpy((char*)new_user.password, password);
+    strcpy((char*)new_user.session_id, NOT_IN_SESSION);
     new_user.status = ONLINE;
     new_user.in_session = OFFLINE;
     new_user.role = USER;
     new_user.socket_fd = socket_fd;
     new_user.port = OFFLINE;
-    strcpy((char*)new_user.session_id, NOT_IN_SESSION);
-    memset((char*)new_user.ip_address, 0, sizeof(new_user.ip_address));
-    user_t temp = {0};
-    user_list_add_user(user_list, &new_user, &rw_mutex);
+    char* ip_address = get_user_ip_address_and_port(&socket_fd, &new_user.port);
+    strcpy(new_user.ip_address, ip_address);
+    free(ip_address);
+    int code = user_list_add_user(user_list, &new_user, &rw_mutex);
+    if (code == USER_ALREADY_EXIST || code == USER_LIST_FULL){
+        pthread_mutex_unlock(&user_list_mutex);
+        return code;
+    }
     write_to_file(user_list_count(user_list,&rw_mutex) - 1);
     pthread_mutex_unlock(&user_list_mutex);
+    return code;
 }
 
 void write_to_file(int user_index){
@@ -532,4 +547,15 @@ void write_to_file(int user_index){
     }
     fprintf(fp, "\n\"%s\":\"%s\"", user_list->user_list[user_index].username, user_list->user_list[user_index].password);
     fclose(fp);
+}
+
+char* user_registration_message(int value){
+    switch (value) {
+        case USER_ALREADY_EXIST:
+            return "Username already exists!.";
+        case USER_LIST_FULL:
+            return "User list is full!.";
+        default:
+            return NULL;
+    }
 }

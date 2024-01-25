@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <pthread.h>
 
-pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 int server_connection_status = 0;
 int verified_access = 0;
 int session_status = 0;
@@ -50,8 +49,9 @@ void* server_message_handler(void* socket_fd){
             verified_access = ON;
         }
         if (message.type == LO_NAK){
-            fprintf(stderr, "Login failed %s\n", (char *)message.data);
+            fprintf(stderr, "Login failed. %s\n", (char *)message.data);
             verified_access = OFF;
+            server_connection_status = OFF;
             break;
         }
         if (message.type == JN_ACK){
@@ -59,17 +59,28 @@ void* server_message_handler(void* socket_fd){
             session_status = ON;
         }
         if (message.type == JN_NAK){
-            fprintf(stderr, "Joining session failed %s\n", (char *)message.data);
+            fprintf(stderr, "Joining session failed. %s\n", (char *)message.data);
         }
         if (message.type == NS_ACK){
             fprintf(stdout, "You created session %s\n", (char *)message.data);
             session_status = ON;
         }
         if (message.type == NEW_SESS){
-            fprintf(stderr, "Failed to create session %s \n", (char *)message.data);
+            fprintf(stderr, "Failed to create session. %s \n", (char *)message.data);
         }
         if (message.type == QU_ACK){
             fprintf(stdout, "%s", (char *)message.data);
+        }
+        if (message.type == RG_ACK){
+            strcpy(name, (char *)message.source);
+            fprintf(stdout, "You have become a registered user on TCL!\n");
+            verified_access = ON;
+        }
+        if (message.type == RG_NAK){
+            fprintf(stderr, "Registration failed. %s\n", (char *)message.data);
+            verified_access = OFF;
+            server_connection_status = OFF;
+            break;
         }
         fprintf(stdout, "===============================\n");
 
@@ -91,7 +102,7 @@ int main(){
 
     while(ON){
         //reset the input array
-        if (thread_count == (thread_number-1)) {
+        if (thread_count == (thread_number)) {
             for (int i = 0; i < thread_count; ++i) {
                 pthread_join(thread[i], NULL);
             }
@@ -152,7 +163,25 @@ int main(){
             thread_count++;
             continue;
         }
-        //register goes here
+        if (strcmp(input[0], "/create") == 0) {
+            if (!parameter_count_validate(index, create_parameter_size)) continue;
+            if (verified_access == ON){
+                if (strcmp(input[1], name) == 0){
+                    fprintf(stderr, "You are already logged in\n");
+                    continue;
+                }
+                else
+                    fprintf(stderr, "You cannot login to another account while staying connected\n");
+                continue;
+            }
+            char * username = input[1];
+            char * password = input[2];
+            char * ip_address = input[3];
+            char * port = input[4];
+            user_registration(&socket_fd, ip_address, port, username, password, &thread[thread_count]);
+            thread_count++;
+            continue;
+        }
         if (server_connection_status == OFF){
             fprintf(stderr, "Please login first\n");
             continue;
@@ -161,7 +190,7 @@ int main(){
             logout(&socket_fd);
         } else if (strcmp(input[0], "/joinsession") == 0) {
             if (!parameter_count_validate(index, join_session_parameter_size)) continue;
-            if (!length_validate(strlen(input[1]), MAX_SESSION_LENGTH)) continue;
+            if (!length_validate((int)strlen(input[1]), MAX_SESSION_LENGTH)) continue;
             char * session_id = input[1];
             join_session(&socket_fd, session_id);
         } else if (strcmp(input[0], "/leavesession") == 0) {
@@ -169,7 +198,7 @@ int main(){
             leave_session(&socket_fd);
         } else if (strcmp(input[0], "/createsession") == 0) {
             if (!parameter_count_validate(index, create_session_parameter_size)) continue;
-            if (!length_validate(strlen(input[1]), MAX_SESSION_LENGTH)) continue;
+            if (!length_validate((int)strlen(input[1]), MAX_SESSION_LENGTH)) continue;
             char * session_id = input[1];
             create_session(&socket_fd, session_id);
         } else if (strcmp(input[0], "/list") == 0) {
@@ -188,6 +217,7 @@ int main(){
             message_t message;
             fill_message(&message, MESSAGE, bytes_read, name, line_buffer);
             message_to_string(&message,message.size, sending_buffer);
+            fprintf(stderr, "sent string: %s", sending_buffer);
             send_message(&socket_fd, strlen(sending_buffer), sending_buffer);
         }
     }
@@ -196,12 +226,12 @@ int main(){
 }
 
 void login(int * socket_fd, char * ip_address, char * port, char * username, char * password, pthread_t* thread){
-    if (!length_validate(strlen(username), MAX_NAME)){
-        fprintf(stderr, "Username needs to be under lenght of %d \n", MAX_NAME);
+    if (!length_validate((int)strlen(username), MAX_NAME)){
+        fprintf(stderr, "Username needs to be under length of %d\n", MAX_NAME);
         return;
     }
-    if (!length_validate(strlen(password), MAX_PASSWORD_LENGTH)){
-        fprintf(stderr, "Password needs to be under lenght of %d\n", MAX_PASSWORD_LENGTH);
+    if (!length_validate((int)strlen(password), MAX_PASSWORD_LENGTH)){
+        fprintf(stderr, "Password needs to be under length of %d\n", MAX_PASSWORD_LENGTH);
         return;
     }
 
@@ -260,6 +290,63 @@ void login(int * socket_fd, char * ip_address, char * port, char * username, cha
     }
     freeaddrinfo(servinfo); // all done with this structure
 
+}
+
+void user_registration(int * socket_fd, char * ip_address, char * port, char * username, char * password, pthread_t* thread){
+    if (!length_validate((int)strlen(username), MAX_NAME)){
+        fprintf(stderr, "Username needs to be under length of %d\n", MAX_NAME);
+        return;
+    }
+    if (!length_validate((int)strlen(password), MAX_PASSWORD_LENGTH)){
+        fprintf(stderr, "Password needs to be under length of %d\n", MAX_PASSWORD_LENGTH);
+        return;
+    }
+
+    // Beej's book
+    int status;
+    struct addrinfo hints;
+    struct addrinfo *servinfo, *p; // will point to the results
+
+    memset(&hints, 0, sizeof hints); // make sure the struct is empty
+    hints.ai_family = AF_UNSPEC; // don't care IPv4 or IPv6
+    hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
+    hints.ai_flags = AI_PASSIVE; // fill in my IP for me
+
+    if ((status = getaddrinfo(ip_address, port, &hints, &servinfo)) != 0) {
+        fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
+        freeaddrinfo(servinfo); // free the linked-list
+        return;
+    }
+
+    // loop through all the results and connect to the first we can
+    for(p = servinfo; p != NULL; p = p->ai_next) {
+        if ((*socket_fd = socket(p->ai_family, p->ai_socktype,
+                p->ai_protocol)) == -1) {
+            perror("client: socket");
+            continue;
+        }
+        if (connect(*socket_fd, p->ai_addr, p->ai_addrlen) == -1) {
+            close(*socket_fd);
+            perror("client: connect");
+            continue;
+        }
+        break;
+    }
+
+    if (p == NULL) {
+        fprintf(stderr, "client: failed to connect\n");
+        freeaddrinfo(servinfo);
+        return;
+    }
+
+    set_server_connection_status(ON);
+    pthread_create(&(*thread), NULL, &server_message_handler, &(*socket_fd));
+    //send login message
+    message_t msg;
+    char buffer[maximum_buffer_size];
+    fill_message(&msg, CREATE, strlen(password),username, password);
+    message_to_string(&msg, msg.size, buffer);
+    send_message(socket_fd,strlen(buffer), buffer);
 }
 
 void logout(int * socket_fd){
@@ -368,3 +455,6 @@ int parameter_count_validate(int received_count, int expected_count){
     }
     return validation_success;
 }
+
+
+
