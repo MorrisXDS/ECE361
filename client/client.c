@@ -1,22 +1,21 @@
 #include "client.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <pthread.h>
 
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-int connection_status = 0;
+int server_connection_status = 0;
+int verified_access = 0;
 int session_status = 0;
 int terminate_signal = 0;
 char name[MAX_NAME];
 
 void* server_message_handler(void* socket_fd){
-    while(connection_status == OFF);
     int server_reply_socket = *((int*)socket_fd);
     size_t bytes_received;
     char buffer[maximum_buffer_size];
     message_t message;
 
-    while (1){
+    while (server_connection_status == ON){
         if (terminate_signal == ON) break;
         memset(buffer, 0, sizeof(buffer));
         memset(&message, 0, sizeof(message));
@@ -24,14 +23,14 @@ void* server_message_handler(void* socket_fd){
         bytes_received = receive_message(&server_reply_socket, buffer);
         if (bytes_received == RECEIVE_ERROR) {
             fprintf(stderr, "Error receiving message Server was likely crashed!\n");
-            if (connection_status == ON){
+            if (server_connection_status == ON){
                 logout(&server_reply_socket);
             }
             break;
         }
         else if (bytes_received == CONNECTION_REFUSED) {
             fprintf(stderr, "You've been logged out!\n");
-            if (connection_status == ON){
+            if (server_connection_status == ON){
                 logout(&server_reply_socket);
             }
             break;
@@ -48,9 +47,12 @@ void* server_message_handler(void* socket_fd){
         if (message.type == LO_ACK){
             strcpy(name, (char *)message.source);
             fprintf(stdout, "%s hopped on the server\n", name);
+            verified_access = ON;
         }
         if (message.type == LO_NAK){
             fprintf(stderr, "Login failed %s\n", (char *)message.data);
+            verified_access = OFF;
+            break;
         }
         if (message.type == JN_ACK){
             fprintf(stdout, "You joined session %s\n", (char *)message.data);
@@ -72,6 +74,7 @@ void* server_message_handler(void* socket_fd){
         fprintf(stdout, "===============================\n");
 
     }
+    close(server_reply_socket);
     return NULL;
 }
 
@@ -83,10 +86,18 @@ int main(){
     ssize_t bytes_read;
     char input[login_parameter_size][20];
     int socket_fd;
-    pthread_t thread;
+    pthread_t thread[thread_number];
+    int thread_count = 0;
 
     while(ON){
         //reset the input array
+        if (thread_count == (thread_number-1)) {
+            for (int i = 0; i < thread_count; ++i) {
+                pthread_join(thread[i], NULL);
+            }
+            fprintf(stderr, "Login Attempts used up Please restart the program if you would like to try again.\n");
+            return 0;
+        }
         for (int i = 0; i < login_parameter_size; ++i) {
             memset(input[i], 0, sizeof(input[i]));
         }
@@ -124,7 +135,7 @@ int main(){
         }
         if (strcmp(input[0], "/login") == 0) {
             if (!parameter_count_validate(index, login_parameter_size)) continue;
-            if (connection_status == ON){
+            if (verified_access == ON){
                 if (strcmp(input[1], name) == 0){
                     fprintf(stderr, "You are already logged in\n");
                     continue;
@@ -137,11 +148,12 @@ int main(){
             char * password = input[2];
             char * ip_address = input[3];
             char * port = input[4];
-            login(&socket_fd, ip_address, port, username, password, &thread);
+            login(&socket_fd, ip_address, port, username, password, &thread[thread_count]);
+            thread_count++;
             continue;
         }
         //register goes here
-        if (connection_status == OFF){
+        if (server_connection_status == OFF){
             fprintf(stderr, "Please login first\n");
             continue;
         } else if (strcmp(input[0], "/logout") == 0) {
@@ -179,7 +191,6 @@ int main(){
             send_message(&socket_fd, strlen(sending_buffer), sending_buffer);
         }
     }
-    pthread_join(thread, NULL);
 
     return 0;
 }
@@ -227,10 +238,11 @@ void login(int * socket_fd, char * ip_address, char * port, char * username, cha
 
     if (p == NULL) {
         fprintf(stderr, "client: failed to connect\n");
-        exit(2);
+        freeaddrinfo(servinfo);
+        return;
     }
 
-    set_connection_status(ON);
+    set_server_connection_status(ON);
     pthread_create(&(*thread), NULL, &server_message_handler, &(*socket_fd));
     //send login message
     message_t msg;
@@ -239,9 +251,11 @@ void login(int * socket_fd, char * ip_address, char * port, char * username, cha
     message_to_string(&msg, msg.size, buffer);
     unsigned int code = send_message(socket_fd,strlen(buffer), buffer);
     if(code == 0){
+        set_server_connection_status(OFF);
         printf("Could Not reach the server at this moment\n");
     }
     else if (code == -1){
+        set_server_connection_status(OFF);
         printf("Connection lost\n");
     }
     freeaddrinfo(servinfo); // all done with this structure
@@ -254,7 +268,8 @@ void logout(int * socket_fd){
     if (session_status == ON){
         leave_session(socket_fd);
     }
-    set_connection_status(OFF);
+    verified_access = OFF;
+    set_server_connection_status(OFF);
     fill_message(&msg, EXIT, 0, name, NULL);
     message_to_string(&msg, msg.size, buffer);
     unsigned int code = send_message(socket_fd, strlen(buffer),buffer);
@@ -323,15 +338,15 @@ void list(int * socket_fd){
 }
 
 void terminate_program(int * socket_fd){
-    if (connection_status == ON){
+    if (server_connection_status == ON){
         logout(socket_fd);
     }
     terminate_signal = ON;
 }
 
 
-void set_connection_status(int status){
-    connection_status = status;
+void set_server_connection_status(int status){
+    server_connection_status = status;
 }
 
 int length_validate(int received_length, int expected_length){

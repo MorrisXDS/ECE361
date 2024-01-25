@@ -84,6 +84,11 @@ int main(int argc, char* argv[]){
 
     while (1) {
         if (thread_count == THREAD_CAPACITY) {
+            printf("thread pool full\n");
+            printf("breaking the while loop!\n");
+            for (int i = 0; i < thread_count; i++){
+                pthread_join(thread_pool[i], NULL);
+            }
             break;
         }
         puts("accepting connections...");
@@ -102,9 +107,6 @@ int main(int argc, char* argv[]){
     }
     //wait for other threads to finish before exiting
     user_list_remove_all(user_list, &user_list_mutex);
-    for (int i = 0; i < thread_count; i++){
-        pthread_join(thread_pool[i], NULL);
-    }
     pthread_exit(NULL);
     return 1;
 }
@@ -114,7 +116,7 @@ void* connection_handler(void* accept_fd){
     message_t received_message, reply_message;
     char buffer[maximum_buffer_size];
     char source[MAX_NAME];
-    char connection_status = OFFLINE;
+    char server_connection_status = OFFLINE;
     unsigned message_type = 999;
     user_t* user;
 
@@ -125,14 +127,14 @@ void* connection_handler(void* accept_fd){
         size_t bytes_received = receive_message(&socket_file_descriptor, buffer);
 
         if (bytes_received == CONNECTION_REFUSED){
-            if (connection_status == ONLINE){
+            if (server_connection_status == ONLINE){
                 printf("user %s disconnected\n", source);
                 server_side_user_exit(source);
             }
             break;
         }
         if (bytes_received == RECEIVE_ERROR){
-            if (connection_status == ONLINE){
+            if (server_connection_status == ONLINE){
                 printf("came across abnormality\n");
                 server_side_user_exit(source);
             }
@@ -141,8 +143,10 @@ void* connection_handler(void* accept_fd){
         }
 
         string_to_message(&received_message, buffer);
+
         if (received_message.type == LOGIN){
-            if (connection_status == ONLINE){
+            int reply_type = verify_login(received_message.source,received_message.data);
+            if (server_connection_status == ONLINE){
                 message_type = LO_NAK;
                 fill_message(&reply_message, message_type,
                              strlen(select_login_message(ALREADY_LOGIN)),
@@ -151,13 +155,14 @@ void* connection_handler(void* accept_fd){
                 send_message(&socket_file_descriptor,strlen(buffer), buffer);
                 continue;
             }
-            int reply_type = verify_login(received_message.source,received_message.data);
+
+
 
             if (reply_type == SUCCESS_LOGIN)
             {
                 fprintf(stdout,"============================\n");
                 fprintf(stdout, "Verification Success!\n");
-                connection_status = ONLINE;
+                server_connection_status = ONLINE;
                 message_type = LO_ACK;
                 user_login((char *)received_message.source, (char*)received_message.data, ONLINE, &socket_file_descriptor);
                 strcpy(source, (char*)received_message.source);
@@ -191,6 +196,7 @@ void* connection_handler(void* accept_fd){
         }
         if (received_message.type == QUERY){
             char list[maximum_buffer_size];
+            memset(list, 0, sizeof(list));
             get_active_user_list(user_list, list);
             fill_message(&reply_message, QU_ACK,
                          strlen(list), (char *)received_message.source, list);
@@ -209,7 +215,7 @@ void* connection_handler(void* accept_fd){
 
         size_t bytes_sent = send_message(&socket_file_descriptor,strlen(buffer),buffer);
         if (bytes_received == CONNECTION_REFUSED){
-            if (connection_status == ONLINE){
+            if (server_connection_status == ONLINE){
                 server_side_user_exit(source);
             }
             break;
@@ -222,6 +228,7 @@ void* connection_handler(void* accept_fd){
 
     }
     close(socket_file_descriptor);
+    fprintf(stdout, "thread exited\n");
     return NULL;
 }
 
@@ -462,7 +469,6 @@ int set_up_database(){
         new_user.port = OFFLINE;
         strcpy((char*)new_user.session_id, NOT_IN_SESSION);
         memset((char*)new_user.ip_address, 0, sizeof(new_user.ip_address));
-        user_t temp = {0};
         user_list_add_user(user_list, &new_user, &rw_mutex);
     }
     return 1;
@@ -472,7 +478,7 @@ char* get_user_ip_address_and_port(int * socket_fd,  unsigned int * port){
     int socket = *socket_fd;
     struct sockaddr_storage user_addr;
     char* ip_address_buffer = (char*)malloc(sizeof(char)*INET6_ADDRSTRLEN);
-    socklen_t user_addrLen;
+    socklen_t user_addrLen = sizeof(user_addr);
 
     if (getpeername(socket, (struct sockaddr *)&user_addr, &user_addrLen) == 0) {
         if (user_addr.ss_family == AF_INET) {
@@ -488,7 +494,6 @@ char* get_user_ip_address_and_port(int * socket_fd,  unsigned int * port){
         } else {
             printf("Unknown address family\n");
         }
-        active_user_list_print(user_list);
     }
     else{
         perror("Getpeername failed");

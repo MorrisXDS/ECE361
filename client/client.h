@@ -13,9 +13,8 @@
 
 #define validation_failure 0
 #define validation_success 1
-#define no_expected_length 0
 
-#define login_errors {"client id too long", "password too long", "too many arguments", "too few parameters"};
+#define thread_number 10
 
 #define OFF 0
 #define ON 1
@@ -30,7 +29,7 @@ void create_session(int * socket_fd, char * session_id);
 void list(int * socket_fd);
 void terminate_program(int * socket_fd);
 void* server_message_handler(void* socket_fd);
-void set_connection_status(int status);
+void set_server_connection_status(int status);
 int length_validate(int received_length, int expected_length);
 int parameter_count_validate(int received_count, int expected_count);
 
