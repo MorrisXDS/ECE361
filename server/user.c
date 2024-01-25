@@ -44,7 +44,7 @@ int user_list_add_user(user_database* list, user_t* user_data, pthread_mutex_t *
 
     list->user_list[list->count] = new_user;
     list->count++;
-    fprintf(stdout, "User %s added to user list\n", list->user_list[list->count-1].username);
+    fprintf(stdout, "User %s added to user list\n", list->user_list[list->count].username);
     pthread_mutex_unlock(mutex);
     return ADD_USER_SUCCESS;
 }
@@ -81,9 +81,7 @@ void user_list_print(user_database* list){
     fprintf(stdout, "User list:\n");
     fprintf(stdout, "%*s %*s %*s %*s\n", -MAX_NAME, "Name", -MAX_SESSION_LENGTH, "Session ID", -INET6_ADDRSTRLEN, "IP Address", -6, "Port");
     for (int i = 0; i < list->count; ++i) {
-        fprintf(stdout, "%*s %*s\n", -MAX_NAME, list->user_list[i].username,
-                -MAX_SESSION_LENGTH, list->user_list[i].session_id);
-        fprintf(stdout, "%*s %*s %*s %*d\n", -MAX_NAME, list->user_list[i].username, 
+        fprintf(stdout, "%*s %*s %*s %*d\n", -MAX_NAME, list->user_list[i].username,
                 -MAX_SESSION_LENGTH,list->user_list[i].session_id, -INET6_ADDRSTRLEN, list->user_list[i].ip_address, -6, list->user_list[i].port);
     }
 }
@@ -102,10 +100,6 @@ void active_user_list_print(user_database * list){
 void get_active_user_list(user_database* list, char * active_user_list) {
     if (list == NULL){
         fprintf(stderr, "Error: list is NULL.\n");
-        return;
-    }
-    if(active_user_list == NULL){
-        fprintf(stderr, "Paramter empty!.\n");
         return;
     }
     strcat(active_user_list, "Active User List:\n");
