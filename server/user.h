@@ -14,11 +14,9 @@
 #define MAX_SESSION_COUNT 10
 #define NOT_IN_SESSION "Not in session"
 
-#define USER 0
-#define ADMIN 1
 
-#define OFFLINE 0
-#define ONLINE 1
+
+
 
 #define USER_CREATE_SUCCESS 1
 #define USER_ALREADY_EXIST 2
@@ -33,6 +31,11 @@
 #define SESSION_EXISTS (-4)
 #define SESSION_ADD_USER_FAILURE (-5)
 #define USER_NAME_IN_SESSION (-6)
+#define USER_DOES_NOT_EXIST (-7)
+#define USER_NOT_IN_SESSION (-8)
+#define USER_NOT_ONLINE (-9)
+#define USER_IN_DIFFERENT_SESSION (-10)
+#define TARGET_IS_ADMIN (-11)
 
 user_t{
     unsigned char username[MAX_NAME];
@@ -60,6 +63,9 @@ void user_list_remove_by_name(user_database * list, char * name, pthread_mutex_t
 void user_list_remove_all(user_database * list, pthread_mutex_t * mutex);
 void user_list_print(user_database * list);
 void active_user_list_print(user_database * list);
+void get_active_user_list_by_session(user_database* list,
+                                     char * active_user_list, char * session_id,
+                                     pthread_mutex_t *mutex);
 void get_active_user_list(user_database* list, char * active_user_list,  pthread_mutex_t *mutex);
 user_t * user_list_find(user_database* list, unsigned char * username);
 int user_list_count(user_database* list, pthread_mutex_t * mutex);

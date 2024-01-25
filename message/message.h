@@ -12,6 +12,14 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
+//user roles
+#define USER 0
+#define ADMIN 1
+
+//access status
+#define OFFLINE 0
+#define ONLINE 1
+
 //DATA TYPES
 #define LOGIN 0
 #define LO_ACK 1
@@ -29,6 +37,16 @@
 #define CREATE 13
 #define RG_ACK 14
 #define RG_NAK 15
+#define KICK 16
+#define KI_ACK 17
+#define KI_NAK 18
+#define KI_MESSAGE 19
+#define PROMOTE 20
+#define PM_ACK 21
+#define PM_NAK 22
+#define PM_MESSAGE 23
+#define SESS_QUERY 24
+#define SQ_ACK 25
 
 
 //Define Errors

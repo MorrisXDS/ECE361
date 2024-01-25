@@ -3,5 +3,5 @@
 "Bob2022":"Secret123"
 "Ella45":"StrongPassword"
 "David1998":"P@ssw0rd"
-"goerge":"15323"
-"4332":"123123"
+"morris":"2002"
+"ciel":"2024"

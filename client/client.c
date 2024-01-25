@@ -2,10 +2,11 @@
 #include <stdio.h>
 #include <pthread.h>
 
-int server_connection_status = 0;
-int verified_access = 0;
-int session_status = 0;
-int terminate_signal = 0;
+int server_connection_status = OFFLINE;
+int verified_access = OFF;
+int session_status = OFFLINE;
+int role = USER;
+int termination_signal = OFF;
 char name[MAX_NAME];
 
 void* server_message_handler(void* socket_fd){
@@ -14,22 +15,22 @@ void* server_message_handler(void* socket_fd){
     char buffer[maximum_buffer_size];
     message_t message;
 
-    while (server_connection_status == ON){
-        if (terminate_signal == ON) break;
+    while (server_connection_status == ONLINE){
+        if (termination_signal == ON) break;
         memset(buffer, 0, sizeof(buffer));
         memset(&message, 0, sizeof(message));
         memset(&bytes_received, 0, sizeof(bytes_received));
         bytes_received = receive_message(&server_reply_socket, buffer);
         if (bytes_received == RECEIVE_ERROR) {
             fprintf(stderr, "Error receiving message Server was likely crashed!\n");
-            if (server_connection_status == ON){
+            if (server_connection_status == ONLINE){
                 logout(&server_reply_socket);
             }
             break;
         }
         else if (bytes_received == CONNECTION_REFUSED) {
             fprintf(stderr, "You've been logged out!\n");
-            if (server_connection_status == ON){
+            if (server_connection_status == ONLINE){
                 logout(&server_reply_socket);
             }
             break;
@@ -51,22 +52,27 @@ void* server_message_handler(void* socket_fd){
         if (message.type == LO_NAK){
             fprintf(stderr, "Login failed. %s\n", (char *)message.data);
             verified_access = OFF;
-            server_connection_status = OFF;
+            server_connection_status = OFFLINE;
+            set_server_connection_status(OFFLINE);
             break;
         }
         if (message.type == JN_ACK){
+            role = USER;
             fprintf(stdout, "You joined session %s\n", (char *)message.data);
-            session_status = ON;
+            session_status = ONLINE;
         }
         if (message.type == JN_NAK){
+            role = USER;
             fprintf(stderr, "Joining session failed. %s\n", (char *)message.data);
+            session_status = OFFLINE;
         }
         if (message.type == NS_ACK){
-            fprintf(stdout, "You created session %s\n", (char *)message.data);
-            session_status = ON;
+            role = ADMIN;
+            fprintf(stdout, "You created session %s\nYou've been promoted to an admin\n", (char *)message.data);
+            session_status = ONLINE;
         }
         if (message.type == NEW_SESS){
-            fprintf(stderr, "Failed to create session. %s \n", (char *)message.data);
+            fprintf(stderr, "Failed to create session. %s\n", (char *)message.data);
         }
         if (message.type == QU_ACK){
             fprintf(stdout, "%s", (char *)message.data);
@@ -79,8 +85,33 @@ void* server_message_handler(void* socket_fd){
         if (message.type == RG_NAK){
             fprintf(stderr, "Registration failed. %s\n", (char *)message.data);
             verified_access = OFF;
-            server_connection_status = OFF;
+            server_connection_status = OFFLINE;
             break;
+        }
+        if (message.type == MESSAGE){
+            fprintf(stdout, "%s: %s\n", (char *)message.source, (char *)message.data);
+        }
+        if (message.type == PM_MESSAGE){
+            role = ADMIN;
+            fprintf(stdout, "You have been given the Admin role.\n");
+        }
+        if (message.type == PM_ACK){
+            role = USER;
+            fprintf(stdout, "You have been re-assigned the USER role.\n"
+                            "Admin Access is now transferred to %s.\n", (char *)message.data);
+        }
+        if (message.type == PM_NAK){
+            fprintf(stderr, "User Access Promotion Failed.\n %s\n", (char *)message.data);
+        }
+        if (message.type == KI_MESSAGE){
+            session_status = OFFLINE;
+            fprintf(stdout, "You have been removed from session \"%s\".\n", (char*) message.data);
+        }
+        if (message.type == KI_ACK){
+            fprintf(stdout, "Action Permitted. USER %s hos now been kicked out!\n", (char *)message.data);
+        }
+        if (message.type == KI_NAK){
+            fprintf(stderr, "Removing user failed.\n%s\n", (char *)message.data);
         }
         fprintf(stdout, "===============================\n");
 
@@ -182,44 +213,89 @@ int main(){
             thread_count++;
             continue;
         }
-        if (server_connection_status == OFF){
+        if (server_connection_status == OFFLINE){
             fprintf(stderr, "Please login first\n");
             continue;
-        } else if (strcmp(input[0], "/logout") == 0) {
+        }
+        if (strcmp(input[0], "/logout") == 0) {
             if (!parameter_count_validate(index, logout_parameter_size)) continue;
             logout(&socket_fd);
-        } else if (strcmp(input[0], "/joinsession") == 0) {
+            continue;
+        }
+        if (strcmp(input[0], "/list") == 0) {
+            if (!parameter_count_validate(index, list_parameter_size)) continue;
+            list(&socket_fd);
+            continue;
+        }
+        if (strcmp(input[0], "/joinsession") == 0) {
             if (!parameter_count_validate(index, join_session_parameter_size)) continue;
             if (!length_validate((int)strlen(input[1]), MAX_SESSION_LENGTH)) continue;
             char * session_id = input[1];
             join_session(&socket_fd, session_id);
-        } else if (strcmp(input[0], "/leavesession") == 0) {
-            if (!parameter_count_validate(index, leave_session_parameter_size)) continue;
-            leave_session(&socket_fd);
-        } else if (strcmp(input[0], "/createsession") == 0) {
+            continue;
+        }
+        if (strcmp(input[0], "/createsession") == 0) {
             if (!parameter_count_validate(index, create_session_parameter_size)) continue;
             if (!length_validate((int)strlen(input[1]), MAX_SESSION_LENGTH)) continue;
             char * session_id = input[1];
             create_session(&socket_fd, session_id);
-        } else if (strcmp(input[0], "/list") == 0) {
-            if (!parameter_count_validate(index, list_parameter_size)) continue;
-            list(&socket_fd);
-        } else{
-            if (input[0][0] == '/') {
-                fprintf(stderr, "Invalid command\n");
-                continue;
-            }
-            if (session_status == OFF){
-                fprintf(stderr, "Please join a session first\n");
-                continue;
-            }
-            char sending_buffer[maximum_buffer_size];
-            message_t message;
-            fill_message(&message, MESSAGE, bytes_read, name, line_buffer);
-            message_to_string(&message,message.size, sending_buffer);
-            fprintf(stderr, "sent string: %s", sending_buffer);
-            send_message(&socket_fd, strlen(sending_buffer), sending_buffer);
+            continue;
         }
+        if (strcmp(input[0], "/leavesession") == 0) {
+            if (!parameter_count_validate(index, leave_session_parameter_size)) continue;
+            leave_session(&socket_fd);
+            continue;
+        }
+        if (session_status == ONLINE){
+            if (input [0][0] != '/') {
+                char sending_buffer[maximum_buffer_size];
+                message_t message;
+                fill_message(&message, MESSAGE, bytes_read, name, line_buffer);
+                message_to_string(&message,message.size, sending_buffer);
+                fprintf(stderr, "sent string: %s\n", sending_buffer);
+                send_message(&socket_fd, strlen(sending_buffer), sending_buffer);
+                continue;
+            }
+            if (role == USER){
+                fprintf(stderr, "You are not an admin of the session\n");
+                continue;
+            }
+            if (strcmp(input[0], "/promote") == 0) {
+                if (!parameter_count_validate(index, promote_parameter_size)) continue;
+                if (!length_validate((int)strlen(input[1]), MAX_NAME)) continue;
+                if (strcmp(name, input[1]) == 0){
+                    fprintf(stderr, "You cannot promote yourself!\n");
+                    continue;
+                }
+                char * username = input[1];
+                promote(&socket_fd, username);
+            }
+            if (strcmp(input[0],"/kick") == 0) {
+                if (!parameter_count_validate(index, kick_parameter_size)) continue;
+                if (!length_validate((int)strlen(input[1]), MAX_NAME)) continue;
+                if (strcmp(name, input[1]) == 0){
+                    fprintf(stderr, "You cannot remove yourself!\n");
+                    continue;
+                }
+                char * username = input[1];
+                kick(&socket_fd, username);
+            }
+            if (input[0][0] == '/'){
+                fprintf(stderr, "Invalid Command\n");
+                continue;
+            }
+            continue;
+        }
+        else if (input[0][0] == '/'){
+            fprintf(stderr, "Invalid Command\n");
+            continue;
+        }
+        else{
+            fprintf(stderr, "Please join/create a session first!\n");
+            continue;
+        }
+
+
     }
 
     return 0;
@@ -281,11 +357,11 @@ void login(int * socket_fd, char * ip_address, char * port, char * username, cha
     message_to_string(&msg, msg.size, buffer);
     unsigned int code = send_message(socket_fd,strlen(buffer), buffer);
     if(code == 0){
-        set_server_connection_status(OFF);
+        set_server_connection_status(OFFLINE);
         printf("Could Not reach the server at this moment\n");
     }
     else if (code == -1){
-        set_server_connection_status(OFF);
+        set_server_connection_status(OFFLINE);
         printf("Connection lost\n");
     }
     freeaddrinfo(servinfo); // all done with this structure
@@ -352,11 +428,11 @@ void user_registration(int * socket_fd, char * ip_address, char * port, char * u
 void logout(int * socket_fd){
     message_t msg;
     char buffer[maximum_buffer_size];
-    if (session_status == ON){
+    if (session_status == ONLINE){
         leave_session(socket_fd);
     }
     verified_access = OFF;
-    set_server_connection_status(OFF);
+    set_server_connection_status(OFFLINE);
     fill_message(&msg, EXIT, 0, name, NULL);
     message_to_string(&msg, msg.size, buffer);
     unsigned int code = send_message(socket_fd, strlen(buffer),buffer);
@@ -369,6 +445,10 @@ void logout(int * socket_fd){
 }
 
 void join_session(int * socket_fd, char * session_id){
+    if (session_status == ONLINE){
+        fprintf(stderr, "You are already in a session\n");
+        return;
+    }
     message_t msg;
     char buffer[maximum_buffer_size];
     fill_message(&msg, JOIN, strlen(session_id), name, session_id);
@@ -383,9 +463,14 @@ void join_session(int * socket_fd, char * session_id){
 }
 
 void leave_session(int * socket_fd){
+    if (session_status == OFFLINE){
+        fprintf(stderr, "You are not in a session!\n");
+        return;
+    }
     message_t msg;
     char buffer[maximum_buffer_size];
-    session_status = OFF;
+    session_status = OFFLINE;
+    role = USER;
     fill_message(&msg, LEAVE_SESS, 0, name, NULL);
     message_to_string(&msg, msg.size, buffer);
     unsigned int code = send_message(socket_fd, strlen(buffer),buffer);
@@ -398,6 +483,10 @@ void leave_session(int * socket_fd){
 }
 
 void create_session(int * socket_fd, char * session_id){
+    if (session_status == ONLINE){
+        fprintf(stderr, "You are already in a session\n");
+        return;
+    }
     message_t msg;
     char buffer[maximum_buffer_size];
     fill_message(&msg, NEW_SESS, strlen(session_id), name, session_id);
@@ -428,9 +517,36 @@ void terminate_program(int * socket_fd){
     if (server_connection_status == ON){
         logout(socket_fd);
     }
-    terminate_signal = ON;
+    termination_signal = ON;
 }
 
+void promote(int *socket_fd, char* username){
+    message_t msg;
+    char buffer[maximum_buffer_size];
+    fill_message(&msg, PROMOTE, strlen(username), name, username);
+    message_to_string(&msg, msg.size, buffer);
+    unsigned int code = send_message(socket_fd, strlen(buffer),buffer);
+    if(code == 0){
+        printf("Could Not reach the server at this moment\n");
+    }
+    else if (code == -1){
+        printf("Connection lost\n");
+    }
+}
+
+void kick(int *socket_fd, char* username){
+    message_t msg;
+    char buffer[maximum_buffer_size];
+    fill_message(&msg, KICK, strlen(username), name, username);
+    message_to_string(&msg, msg.size, buffer);
+    unsigned int code = send_message(socket_fd, strlen(buffer),buffer);
+    if(code == 0){
+        printf("Could Not reach the server at this moment\n");
+    }
+    else if (code == -1){
+        printf("Connection lost\n");
+    }
+}
 
 void set_server_connection_status(int status){
     server_connection_status = status;

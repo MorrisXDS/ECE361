@@ -97,7 +97,44 @@ void active_user_list_print(user_database * list){
     }
 }
 
+void get_active_user_list_by_session(user_database* list, char * active_user_list, char * session_id,  pthread_mutex_t *mutex){
+    pthread_mutex_t **mutex_ptr = &mutex;
+    pthread_mutex_lock(*mutex_ptr);
+    if (list == NULL){
+        fprintf(stderr, "Error: list is NULL.\n");
+        return;
+    }
+    if(active_user_list == NULL){
+        fprintf(stderr, "parameter empty!.\n");
+        return;
+    }
+    strcat(active_user_list, "Active User List:\n");
+    char message[maximum_buffer_size];
+    sprintf(message, "%*s %*s\n", -MAX_NAME, "Username", -MAX_SESSION_COUNT, "Session ID");
+    strcat(active_user_list, message);
+    char role[6];
+
+    for (int i = 0; i < list->count; ++i) {
+        if (strcmp(list->user_list[i].session_id,session_id) == 0) {
+            memset(role, 0, 5);
+            if (list->user_list[i].role == ADMIN){
+                strcpy(role, "ADMIN");
+            }
+            else{
+                strcpy(role, "USER");
+            }
+            memset(message, 0, maximum_buffer_size);
+            sprintf(message, "%*s %*s %*s\n", -MAX_NAME, list->user_list[i].username,
+                    -MAX_SESSION_COUNT, list->user_list[i].session_id, 6, role);
+            strcat(active_user_list, message);
+        }
+    }
+    pthread_mutex_unlock(*mutex_ptr);
+}
+
 void get_active_user_list(user_database* list, char * active_user_list,  pthread_mutex_t *mutex) {
+    pthread_mutex_t **mutex_ptr = &mutex;
+    pthread_mutex_lock(*mutex_ptr);
     if (list == NULL){
         fprintf(stderr, "Error: list is NULL.\n");
         return;
@@ -119,7 +156,7 @@ void get_active_user_list(user_database* list, char * active_user_list,  pthread
         }
     }
     fprintf(stdout, "%s", active_user_list);
-
+    pthread_mutex_unlock(*mutex_ptr);
 }
 user_t * user_list_find(user_database* list, unsigned char * username) {
     if (username == NULL){
@@ -177,6 +214,9 @@ void user_exit_current_session(user_database* list, char * username, pthread_mut
     user_t * user = return_user_by_username(list, (unsigned char *) username);
     char session_id[MAX_SESSION_LENGTH];
     strcpy(session_id, user->session_id);
+    if(strcmp(user->session_id, NOT_IN_SESSION) ==0){
+        return;
+    }
     user->in_session = OFFLINE;
     user->role = USER;
     memset(user->session_id, 0, sizeof(user->session_id));

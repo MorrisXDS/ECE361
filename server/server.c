@@ -217,6 +217,14 @@ void* connection_handler(void* accept_fd){
             send_message_in_a_session(&reply_message, sending_user->session_id);
             continue;
         }
+        if (received_message.type == KICK){
+            server_side_kick_user(source, (char*)received_message.data);
+            continue;
+        }
+        if (received_message.type == PROMOTE){
+            server_side_promote_user(source, (char*)received_message.data);
+            continue;
+        }
 
         size_t bytes_sent = send_message(&socket_file_descriptor,strlen(buffer),buffer);
         if (bytes_sent == CONNECTION_REFUSED){
@@ -232,6 +240,7 @@ void* connection_handler(void* accept_fd){
 
     }
     close(socket_file_descriptor);
+    fprintf(stdout, "thread exited\n");
     return NULL;
 }
 
@@ -425,6 +434,16 @@ char* session_response_message(int value){
             return "failed to add the user in the session!.";
         case USER_NAME_IN_SESSION:
             return "Please leave the session before joining/creating another one!.";
+        case USER_DOES_NOT_EXIST:
+            return "User does not exist!.";
+        case USER_NOT_IN_SESSION:
+            return "User is not in a session!.";
+        case USER_NOT_ONLINE:
+            return "User is not online!.";
+        case USER_IN_DIFFERENT_SESSION:
+            return "User is in a different session!.";
+        case TARGET_IS_ADMIN:
+            return "Target User is an admin.";
         default:
             return NULL;
     }
@@ -504,9 +523,8 @@ char* get_user_ip_address_and_port(const int * socket_fd,  unsigned int * port){
     return ip_address_buffer;
 }
 
-int user_registration(char * username, char * password, int  *socket_fd){
+int user_registration(char * username, char * password, const int  *socket_fd){
     pthread_mutex_lock(&user_list_mutex);
-    user_t* user = user_list_find(user_list, (unsigned char*)username);
     user_t new_user = {0};
     strcpy((char*)new_user.username, username);
     strcpy((char*)new_user.password, password);
@@ -552,4 +570,152 @@ char* user_registration_message(int value){
         default:
             return NULL;
     }
+}
+
+void server_side_kick_user(char* sender, char* target){
+    pthread_mutex_lock(&user_list_mutex);
+    user_t* target_user = user_list_find(user_list, (unsigned char*)target);
+    user_t* sender_user = user_list_find(user_list, (unsigned char*)sender);
+
+    message_t reply_message = {0};
+    char buffer[maximum_buffer_size] = {0};
+
+    if (target_user == NULL){
+        fill_message(&reply_message, KI_NAK,
+                     strlen(session_response_message(USER_DOES_NOT_EXIST)),
+                     sender,session_response_message(USER_DOES_NOT_EXIST));
+        message_to_string(&reply_message, reply_message.size, buffer);
+        send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+        pthread_mutex_unlock(&user_list_mutex);
+        return;
+    }
+    if (target_user->status == OFFLINE){
+        fill_message(&reply_message, KI_NAK,
+                     strlen(session_response_message(USER_NOT_ONLINE)),
+                     sender,session_response_message(USER_NOT_ONLINE));
+        message_to_string(&reply_message, reply_message.size, buffer);
+        send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+        pthread_mutex_unlock(&user_list_mutex);
+        return;
+    }
+    if (target_user->in_session == OFFLINE){
+        fill_message(&reply_message, KI_NAK,
+                     strlen(session_response_message(USER_NOT_IN_SESSION)),
+                     sender,session_response_message(USER_NOT_IN_SESSION));
+        message_to_string(&reply_message, reply_message.size, buffer);
+        send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+        pthread_mutex_unlock(&user_list_mutex);
+        return;
+    }
+    else if (strcmp(target_user->session_id,sender_user->session_id) != 0){
+        fill_message(&reply_message, KI_NAK,
+                     strlen(session_response_message(USER_IN_DIFFERENT_SESSION)),
+                     sender,session_response_message(USER_IN_DIFFERENT_SESSION));
+        message_to_string(&reply_message, reply_message.size, buffer);
+        send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+        pthread_mutex_unlock(&user_list_mutex);
+        return;
+    }
+    else if (target_user->role == ADMIN){
+        fill_message(&reply_message, KI_NAK,
+                     strlen(session_response_message(TARGET_IS_ADMIN)),
+                     sender,session_response_message(TARGET_IS_ADMIN));
+        message_to_string(&reply_message, reply_message.size, buffer);
+        send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+        pthread_mutex_unlock(&user_list_mutex);
+        return;
+    }
+
+    target_user->in_session = OFFLINE;
+    memset((char*)target_user->session_id, 0, sizeof(target_user->session_id));
+    strcpy((char*)target_user->session_id, NOT_IN_SESSION);
+    fill_message(&reply_message, KI_MESSAGE,
+                 strlen(sender_user->session_id),
+                 sender,sender_user->session_id);
+    message_to_string(&reply_message, reply_message.size, buffer);
+    send_message(&target_user->socket_fd, strlen(buffer), buffer);
+
+    memset(&reply_message, 0, sizeof(reply_message));
+    memset(buffer, 0, sizeof(buffer));
+
+    fill_message(&reply_message, KI_ACK,
+                 strlen((char *)target_user->username),
+                 sender,(char *)target_user->username);
+    message_to_string(&reply_message, reply_message.size, buffer);
+    send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+
+    pthread_mutex_unlock(&user_list_mutex);
+}
+
+void server_side_promote_user(char* sender, char* target){
+    pthread_mutex_lock(&user_list_mutex);
+    user_t* target_user = user_list_find(user_list, (unsigned char*)target);
+    user_t* sender_user = user_list_find(user_list, (unsigned char*)sender);
+
+    message_t reply_message = {0};
+    char buffer[maximum_buffer_size] = {0};
+
+    if (target_user == NULL){
+        fill_message(&reply_message, PM_NAK,
+                     strlen(session_response_message(USER_DOES_NOT_EXIST)),
+                     sender,session_response_message(USER_DOES_NOT_EXIST));
+        message_to_string(&reply_message, reply_message.size, buffer);
+        send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+        pthread_mutex_unlock(&user_list_mutex);
+        return;
+    }
+    if (target_user->status == OFFLINE){
+        fill_message(&reply_message, PM_NAK,
+                     strlen(session_response_message(USER_NOT_ONLINE)),
+                     sender,session_response_message(USER_NOT_ONLINE));
+        message_to_string(&reply_message, reply_message.size, buffer);
+        send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+        pthread_mutex_unlock(&user_list_mutex);
+        return;
+    }
+    if (target_user->in_session == OFFLINE){
+        fill_message(&reply_message, PM_NAK,
+                     strlen(session_response_message(USER_NOT_IN_SESSION)),
+                     sender,session_response_message(USER_NOT_IN_SESSION));
+        message_to_string(&reply_message, reply_message.size, buffer);
+        send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+        pthread_mutex_unlock(&user_list_mutex);
+        return;
+    }
+    else if (strcmp(target_user->session_id,sender_user->session_id) != 0){
+        fill_message(&reply_message, PM_NAK,
+                     strlen(session_response_message(USER_IN_DIFFERENT_SESSION)),
+                     sender,session_response_message(USER_IN_DIFFERENT_SESSION));
+        message_to_string(&reply_message, reply_message.size, buffer);
+        send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+        pthread_mutex_unlock(&user_list_mutex);
+        return;
+    }
+    else if (target_user->role == ADMIN){
+        fill_message(&reply_message, PM_NAK,
+                     strlen(session_response_message(TARGET_IS_ADMIN)),
+                     sender,session_response_message(TARGET_IS_ADMIN));
+        message_to_string(&reply_message, reply_message.size, buffer);
+        send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+        pthread_mutex_unlock(&user_list_mutex);
+        return;
+    }
+
+    target_user->role = ADMIN;
+    sender_user->role = USER;
+    fill_message(&reply_message, PM_MESSAGE,
+                 0,sender,NULL);
+    message_to_string(&reply_message, reply_message.size, buffer);
+    send_message(&target_user->socket_fd, strlen(buffer), buffer);
+
+    memset(&reply_message, 0, sizeof(reply_message));
+    memset(buffer, 0, sizeof(buffer));
+
+    fill_message(&reply_message, PM_ACK,
+                 strlen((char *)target_user->username),
+                 sender,(char *)target_user->username);
+    message_to_string(&reply_message, reply_message.size, buffer);
+    send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+
+    pthread_mutex_unlock(&user_list_mutex);
 }
