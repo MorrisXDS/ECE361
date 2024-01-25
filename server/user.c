@@ -88,11 +88,11 @@ void user_list_print(user_database* list){
 
 void active_user_list_print(user_database * list){
     fprintf(stdout, "Active user list:\n");
-    fprintf(stdout, "%*s %*s %*s %*s\n", -MAX_NAME, "Name", -MAX_SESSION_LENGTH, "Session ID", -INET6_ADDRSTRLEN, "IP Address", -6, "Port");
+    fprintf(stdout, "%*s %*s\n", -MAX_NAME, "Name", -MAX_SESSION_LENGTH, "Session ID");
     for (int i = 0; i < list->count; ++i) {
         if (list->user_list[i].status == ONLINE) {
-            fprintf(stdout, "%*s %*s %*s %*d\n", -MAX_NAME, list->user_list[i].username,
-                -MAX_SESSION_LENGTH,list->user_list[i].session_id, -INET6_ADDRSTRLEN, list->user_list[i].ip_address, -6, list->user_list[i].port);
+            fprintf(stdout, "%*s %*s\n", -MAX_NAME, list->user_list[i].username,
+                    -MAX_SESSION_LENGTH, list->user_list[i].session_id);
         }
     }
 }
@@ -110,7 +110,7 @@ void get_active_user_list(user_database* list, char * active_user_list,  pthread
     char message[maximum_buffer_size];
     sprintf(message, "%*s %*s\n", -MAX_NAME, "Username", -MAX_SESSION_COUNT, "Session ID");
     strcat(active_user_list, message);
-    
+
     for (int i = 0; i < list->count; ++i) {
         if (list->user_list[i].status == ONLINE) {
             memset(message, 0, sizeof(message));

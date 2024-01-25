@@ -141,20 +141,10 @@ void* connection_handler(void* accept_fd){
             perror("receive failed");
             break;
         }
-
-        printf("received message: %s\n", buffer);
         string_to_message(&received_message, buffer);
 
         if (received_message.type == LOGIN){
             int reply_type = verify_login(received_message.source,received_message.data);
-//            if (server_connection_status == ONLINE){
-//                fill_message(&reply_message, LO_NAK,
-//                             strlen(select_login_message(ALREADY_LOGIN)),
-//                             source, select_login_message(ALREADY_LOGIN));
-//                message_to_string(&received_message, received_message.size, buffer);
-//                send_message(&socket_file_descriptor,strlen(buffer), buffer);
-//                continue;
-//            }
 
             if (reply_type == SUCCESS_LOGIN)
             {
@@ -242,7 +232,6 @@ void* connection_handler(void* accept_fd){
 
     }
     close(socket_file_descriptor);
-    fprintf(stdout, "thread exited\n");
     return NULL;
 }
 
@@ -419,6 +408,7 @@ void user_login(char * username, unsigned char status, const int* socket_fd){
     strcpy(user->ip_address, IP_ADDR_BUFFER);
     free(IP_ADDR_BUFFER);
     pthread_mutex_unlock(&user_list_mutex);
+    user_list_print(user_list);
 }
 
 char* session_response_message(int value){
@@ -490,7 +480,7 @@ char* get_user_ip_address_and_port(const int * socket_fd,  unsigned int * port){
     struct sockaddr_storage user_addr;
     memset(&user_addr, 0, sizeof(user_addr));
     char* ip_address_buffer = (char*)malloc(sizeof(char)*INET6_ADDRSTRLEN);
-    socklen_t user_addrLen;
+    socklen_t user_addrLen = sizeof(user_addr);
 
     if (getpeername(socket, (struct sockaddr *)&user_addr, &user_addrLen) == 0) {
         if (user_addr.ss_family == AF_INET) {
@@ -536,6 +526,7 @@ int user_registration(char * username, char * password, int  *socket_fd){
         pthread_mutex_unlock(&user_list_mutex);
         return code;
     }
+    user_list_print(user_list);
     write_to_file(user_list_count(user_list,&rw_mutex) - 1);
     pthread_mutex_unlock(&user_list_mutex);
     return code;
