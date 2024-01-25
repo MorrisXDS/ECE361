@@ -124,6 +124,15 @@ int main(){
         }
         if (strcmp(input[0], "/login") == 0) {
             if (!parameter_count_validate(index, login_parameter_size)) continue;
+            if (connection_status == ON){
+                if (strcmp(input[1], name) == 0){
+                    fprintf(stderr, "You are already logged in\n");
+                    continue;
+                }
+                else
+                    fprintf(stderr, "You cannot login to another account while staying connected\n");
+                continue;
+            }
             char * username = input[1];
             char * password = input[2];
             char * ip_address = input[3];

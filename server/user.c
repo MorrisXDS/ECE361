@@ -79,10 +79,12 @@ void user_list_remove_all(user_database* list, pthread_mutex_t * mutex){
 
 void user_list_print(user_database* list){
     fprintf(stdout, "User list:\n");
-    fprintf(stdout, "%*s %*s\n", -MAX_NAME, "Name", -MAX_SESSION_LENGTH, "Session ID");
+    fprintf(stdout, "%*s %*s %*s %*s\n", -MAX_NAME, "Name", -MAX_SESSION_LENGTH, "Session ID", -INET6_ADDRSTRLEN, "IP Address", -6, "Port");
     for (int i = 0; i < list->count; ++i) {
         fprintf(stdout, "%*s %*s\n", -MAX_NAME, list->user_list[i].username,
                 -MAX_SESSION_LENGTH, list->user_list[i].session_id);
+        fprintf(stdout, "%*s %*s %*s %*d\n", -MAX_NAME, list->user_list[i].username, 
+                -MAX_SESSION_LENGTH,list->user_list[i].session_id, -INET6_ADDRSTRLEN, list->user_list[i].ip_address, -6, list->user_list[i].port);
     }
 }
 

@@ -159,7 +159,7 @@ void* connection_handler(void* accept_fd){
                 fprintf(stdout, "Verification Success!\n");
                 connection_status = ONLINE;
                 message_type = LO_ACK;
-                user_log_in((char *)received_message.source, (char*)received_message.data, ONLINE, &socket_file_descriptor);
+                user_login((char *)received_message.source, (char*)received_message.data, ONLINE, &socket_file_descriptor);
                 strcpy(source, (char*)received_message.source);
                 fprintf(stdout, "user %s just landed!!\n", source);
                 fprintf(stdout,"============================\n");
@@ -382,11 +382,14 @@ char* select_login_message(int index){
         return "Your password is incorrect.";
     else if (index == ALREADY_LOGIN)
         return "You have logged in elsewhere.\n Please log out of the other session before proceeding.";
+    else if (index == MULTIPLE_LOG_AT_SAME_IP)
+        return "Logging into another account while staying online is not permitted!";
     else
         return NULL;
 }
 
-void user_log_in(char * username, char * password, unsigned char status, int* socket_fd){
+void user_login(char * username, char * password, unsigned char status, int* socket_fd){
+    pthread_mutex_lock(&user_list_mutex);
     user_t* user = user_list_find(user_list, (unsigned char*)username);
     if (user == NULL){
         fprintf(stderr, "Error: user is NULL.\n");
@@ -394,18 +397,11 @@ void user_log_in(char * username, char * password, unsigned char status, int* so
     }
     user->socket_fd = *socket_fd;
     user->status = ONLINE;
-    struct sockaddr_in client_addr;
-    socklen_t addr_len = sizeof(client_addr);
-
-    if (getpeername(*socket_fd, (struct sockaddr*)&client_addr, &addr_len) == -1) {
-        perror("getpeername");
-        exit(EXIT_FAILURE);
-    }
-    struct sockaddr_in *s = (struct sockaddr_in *)&client_addr;
-    user->port = ntohs(s->sin_port);
-    inet_ntop(AF_UNSPEC, &s->sin_addr, user->ip_address,
-              sizeof (user->ip_address));
-    active_user_list_print(user_list);
+    char* IP_ADDR_BUFFER;
+    IP_ADDR_BUFFER = get_user_ip_address_and_port(&user->socket_fd, &user->port);
+    strcpy(user->ip_address, IP_ADDR_BUFFER);
+    free(IP_ADDR_BUFFER);
+    pthread_mutex_unlock(&user_list_mutex);
 }
 
 char* session_response_message(int value){
@@ -469,6 +465,34 @@ int set_up_database(){
         user_t temp = {0};
         user_list_add_user(user_list, &new_user, &rw_mutex);
     }
-    user_list_print(user_list);
     return 1;
+}
+
+char* get_user_ip_address_and_port(int * socket_fd,  unsigned int * port){
+    int socket = *socket_fd;
+    struct sockaddr_storage user_addr;
+    char* ip_address_buffer = (char*)malloc(sizeof(char)*INET6_ADDRSTRLEN);
+    socklen_t user_addrLen;
+
+    if (getpeername(socket, (struct sockaddr *)&user_addr, &user_addrLen) == 0) {
+        if (user_addr.ss_family == AF_INET) {
+            // IPv4
+            struct sockaddr_in *ipv4 = (struct sockaddr_in *) &user_addr;
+            inet_ntop(AF_INET, &(ipv4->sin_addr), ip_address_buffer, INET6_ADDRSTRLEN);
+            *port = ntohs(ipv4->sin_port);
+        } else if (user_addr.ss_family == AF_INET6) {
+            // IPv6
+            struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *) &user_addr;
+            inet_ntop(AF_INET6, &(ipv6->sin6_addr), ip_address_buffer, INET6_ADDRSTRLEN);
+            *port = ntohs(ipv6->sin6_port);
+        } else {
+            printf("Unknown address family\n");
+        }
+        active_user_list_print(user_list);
+    }
+    else{
+        perror("Getpeername failed");
+    }
+
+    return ip_address_buffer;
 }
