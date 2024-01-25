@@ -102,7 +102,7 @@ int main(){
 
     while(ON){
         //reset the input array
-        if (thread_count == (thread_number)) {
+        if (thread_count == (thread_number-1)) {
             for (int i = 0; i < thread_count; ++i) {
                 pthread_join(thread[i], NULL);
             }

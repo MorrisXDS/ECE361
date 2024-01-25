@@ -177,7 +177,7 @@ void* connection_handler(void* accept_fd){
         if (received_message.type == CREATE){
             int reply_type = user_registration((char *)received_message.source,
                                                (char *)received_message.data,
-                                               socket_file_descriptor);
+                                               &socket_file_descriptor);
             if (reply_type == ADD_USER_SUCCESS)
             {
                 fprintf(stdout,"============================\n");
@@ -488,6 +488,7 @@ int set_up_database(){
 char* get_user_ip_address_and_port(const int * socket_fd,  unsigned int * port){
     int socket = *socket_fd;
     struct sockaddr_storage user_addr;
+    memset(&user_addr, 0, sizeof(user_addr));
     char* ip_address_buffer = (char*)malloc(sizeof(char)*INET6_ADDRSTRLEN);
     socklen_t user_addrLen;
 
@@ -513,19 +514,21 @@ char* get_user_ip_address_and_port(const int * socket_fd,  unsigned int * port){
     return ip_address_buffer;
 }
 
-int user_registration(char * username, char * password, int socket_fd){
+int user_registration(char * username, char * password, int  *socket_fd){
     pthread_mutex_lock(&user_list_mutex);
     user_t* user = user_list_find(user_list, (unsigned char*)username);
     user_t new_user = {0};
     strcpy((char*)new_user.username, username);
     strcpy((char*)new_user.password, password);
     strcpy((char*)new_user.session_id, NOT_IN_SESSION);
+    memset((char*)new_user.ip_address, 0, sizeof(new_user.ip_address));
     new_user.status = ONLINE;
     new_user.in_session = OFFLINE;
     new_user.role = USER;
-    new_user.socket_fd = socket_fd;
+    new_user.socket_fd = *socket_fd;
     new_user.port = OFFLINE;
-    char* ip_address = get_user_ip_address_and_port(&socket_fd, &new_user.port);
+    char* ip_address;
+    ip_address = get_user_ip_address_and_port(&new_user.socket_fd, &new_user.port);
     strcpy(new_user.ip_address, ip_address);
     free(ip_address);
     int code = user_list_add_user(user_list, &new_user, &rw_mutex);
