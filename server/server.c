@@ -504,3 +504,32 @@ char* get_user_ip_address_and_port(int * socket_fd,  unsigned int * port){
 
     return ip_address_buffer;
 }
+
+void user_registration(char * username, char * password, int socket_fd){
+    pthread_mutex_lock(&user_list_mutex);
+    user_t new_user = {0};
+    strcpy((char*)new_user.username, username);
+    strcpy((char*)new_user.password, password);
+    new_user.status = ONLINE;
+    new_user.in_session = OFFLINE;
+    new_user.role = USER;
+    new_user.socket_fd = socket_fd;
+    new_user.port = OFFLINE;
+    strcpy((char*)new_user.session_id, NOT_IN_SESSION);
+    memset((char*)new_user.ip_address, 0, sizeof(new_user.ip_address));
+    user_t temp = {0};
+    user_list_add_user(user_list, &new_user, &rw_mutex);
+    write_to_file(user_list_count(user_list,&rw_mutex) - 1);
+    pthread_mutex_unlock(&user_list_mutex);
+}
+
+void write_to_file(int user_index){
+    FILE * fp;
+    fp = fopen(database_path, "a");
+    if (fp == NULL){
+        perror("Error opening file");
+        return;
+    }
+    fprintf(fp, "\n\"%s\":\"%s\"", user_list->user_list[user_index].username, user_list->user_list[user_index].password);
+    fclose(fp);
+}

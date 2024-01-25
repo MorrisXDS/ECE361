@@ -38,5 +38,7 @@ char* session_response_message(int value);
 void send_message_in_a_session(message_t * msg, char * session_id);
 int is_same_ip_address(int * socket_fd);
 char* get_user_ip_address_and_port(int * socket_fd,  unsigned int * port);
+void write_to_file(int user_index);
+void user_registration(char * username, char * password, int socket_fd);
 
 #endif
