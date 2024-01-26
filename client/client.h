@@ -13,6 +13,7 @@
 #define create_parameter_size 5
 #define kick_parameter_size 2
 #define promote_parameter_size 2
+#define userlist_parameter_size 2
 
 #define validation_failure 0
 #define validation_success 1
@@ -38,6 +39,6 @@ void* server_message_handler(void* socket_fd);
 void set_server_connection_status(int status);
 int length_validate(int received_length, int expected_length);
 int parameter_count_validate(int received_count, int expected_count);
-
+void user_list(int * socket_fd, char * session_id);
 
 #endif

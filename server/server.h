@@ -38,5 +38,6 @@ int user_registration(char * username, char * password, const int  *socket_fd);
 char* user_registration_message(int value);
 void server_side_kick_user(char* doer, char* target);
 void server_side_promote_user(char* sender, char* target);
+int session_query(char * session_id, char * buffer);
 
 #endif

@@ -4,4 +4,3 @@
 "Ella45":"StrongPassword"
 "David1998":"P@ssw0rd"
 "morris":"2002"
-"ciel":"2024"

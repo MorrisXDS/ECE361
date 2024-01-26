@@ -12,7 +12,7 @@
 #define user_database struct user_list
 
 #define MAX_SESSION_COUNT 10
-#define NOT_IN_SESSION "Not in session"
+
 
 
 
@@ -63,7 +63,7 @@ void user_list_remove_by_name(user_database * list, char * name, pthread_mutex_t
 void user_list_remove_all(user_database * list, pthread_mutex_t * mutex);
 void user_list_print(user_database * list);
 void active_user_list_print(user_database * list);
-void get_active_user_list_by_session(user_database* list,
+int get_active_user_list_by_session(user_database* list,
                                      char * active_user_list, char * session_id,
                                      pthread_mutex_t *mutex);
 void get_active_user_list(user_database* list, char * active_user_list,  pthread_mutex_t *mutex);

@@ -209,6 +209,22 @@ void* connection_handler(void* accept_fd){
                          strlen(list), (char *)received_message.source, list);
             message_to_string(&reply_message, reply_message.size, buffer);
         }
+        if (received_message.type == SESS_QUERY){
+            char list[maximum_buffer_size];
+            memset(list, 0, sizeof(list));
+            int code = get_active_user_list_by_session(user_list,list,
+                                            (char*)received_message.data, &rw_mutex);
+            if (code == SESSION_NAME_INVALID)
+                fill_message(&reply_message, SQ_NAK,
+                             strlen(session_response_message(code)),
+                             (char *)received_message.source,
+                             session_response_message(code));
+            else
+                fill_message(&reply_message, SQ_ACK,
+                         strlen(list), (char *)received_message.source, list);
+            message_to_string(&reply_message, reply_message.size, buffer);
+        }
+
         if (received_message.type == MESSAGE){
             fill_message(&reply_message, MESSAGE,
                          received_message.size,

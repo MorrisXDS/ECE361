@@ -47,7 +47,10 @@
 #define PM_MESSAGE 23
 #define SESS_QUERY 24
 #define SQ_ACK 25
+#define SQ_NAK 26
 
+
+#define NOT_IN_SESSION "Not in session"
 
 //Define Errors
 #define RECEIVE_ERROR (-1)

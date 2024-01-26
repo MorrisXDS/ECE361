@@ -108,10 +108,16 @@ void* server_message_handler(void* socket_fd){
             fprintf(stdout, "You have been removed from session \"%s\".\n", (char*) message.data);
         }
         if (message.type == KI_ACK){
-            fprintf(stdout, "Action Permitted. USER %s hos now been kicked out!\n", (char *)message.data);
+            fprintf(stdout, "Action Permitted.\n USER %s hos now been kicked out!\n", (char *)message.data);
         }
         if (message.type == KI_NAK){
             fprintf(stderr, "Removing user failed.\n%s\n", (char *)message.data);
+        }
+        if (message.type == SQ_ACK){
+            fprintf(stdout, "%s", (char*) message.data);
+        }
+        if (message.type == SQ_NAK){
+            fprintf(stderr, "Failed to query the session.\n%s\n", (char *)message.data);
         }
         fprintf(stdout, "===============================\n");
 
@@ -227,6 +233,11 @@ int main(){
             list(&socket_fd);
             continue;
         }
+        if (strcmp(input[0], "/userlist") == 0) {
+            if (!parameter_count_validate(index, userlist_parameter_size)) continue;
+            user_list(&socket_fd, input[1]);
+            continue;
+        }
         if (strcmp(input[0], "/joinsession") == 0) {
             if (!parameter_count_validate(index, join_session_parameter_size)) continue;
             if (!length_validate((int)strlen(input[1]), MAX_SESSION_LENGTH)) continue;
@@ -252,7 +263,6 @@ int main(){
                 message_t message;
                 fill_message(&message, MESSAGE, bytes_read, name, line_buffer);
                 message_to_string(&message,message.size, sending_buffer);
-                fprintf(stderr, "sent string: %s\n", sending_buffer);
                 send_message(&socket_fd, strlen(sending_buffer), sending_buffer);
                 continue;
             }
@@ -513,6 +523,25 @@ void list(int * socket_fd){
     }
 }
 
+void user_list(int * socket_fd, char * session_id){
+    message_t msg;
+    char buffer[maximum_buffer_size];
+    if(strcmp(session_id, NOT_IN_SESSION) == 0){
+        fprintf(stdout,"Session Query Not permitted\n \"not in session\" is not a session");
+        return;
+    }
+    fill_message(&msg, SESS_QUERY, strlen(session_id), name, session_id);
+    message_to_string(&msg, msg.size, buffer);
+    unsigned int code = send_message(socket_fd, strlen(buffer),buffer);
+    if(code == 0){
+        printf("Could Not reach the server at this moment\n");
+    }
+    else if (code == -1){
+        printf("Connection lost\n");
+    }
+}
+
+
 void terminate_program(int * socket_fd){
     if (server_connection_status == ON){
         logout(socket_fd);
@@ -521,6 +550,10 @@ void terminate_program(int * socket_fd){
 }
 
 void promote(int *socket_fd, char* username){
+    if (!length_validate((int)strlen(username), MAX_NAME)){
+        fprintf(stderr, "Username needs to be under length of %d\n", MAX_NAME);
+        return;
+    }
     message_t msg;
     char buffer[maximum_buffer_size];
     fill_message(&msg, PROMOTE, strlen(username), name, username);
@@ -535,6 +568,10 @@ void promote(int *socket_fd, char* username){
 }
 
 void kick(int *socket_fd, char* username){
+    if (!length_validate((int)strlen(username), MAX_NAME)){
+        fprintf(stderr, "Username needs to be under length of %d\n", MAX_NAME);
+        return;
+    }
     message_t msg;
     char buffer[maximum_buffer_size];
     fill_message(&msg, KICK, strlen(username), name, username);

@@ -97,20 +97,16 @@ void active_user_list_print(user_database * list){
     }
 }
 
-void get_active_user_list_by_session(user_database* list, char * active_user_list, char * session_id,  pthread_mutex_t *mutex){
+int get_active_user_list_by_session(user_database* list, char * active_user_list, char * session_id,  pthread_mutex_t *mutex){
+    if (user_list_count_by_session_id(list, session_id, mutex) == 0){
+        fprintf(stderr, "Error: session_id is invalid.\n");
+        return SESSION_NAME_INVALID;
+    }
     pthread_mutex_t **mutex_ptr = &mutex;
     pthread_mutex_lock(*mutex_ptr);
-    if (list == NULL){
-        fprintf(stderr, "Error: list is NULL.\n");
-        return;
-    }
-    if(active_user_list == NULL){
-        fprintf(stderr, "parameter empty!.\n");
-        return;
-    }
     strcat(active_user_list, "Active User List:\n");
     char message[maximum_buffer_size];
-    sprintf(message, "%*s %*s\n", -MAX_NAME, "Username", -MAX_SESSION_COUNT, "Session ID");
+    sprintf(message, "%*s %*s %*s\n", -MAX_NAME, "Username", -MAX_SESSION_COUNT, "Session ID", -6 , "Role");
     strcat(active_user_list, message);
     char role[6];
 
@@ -125,11 +121,12 @@ void get_active_user_list_by_session(user_database* list, char * active_user_lis
             }
             memset(message, 0, maximum_buffer_size);
             sprintf(message, "%*s %*s %*s\n", -MAX_NAME, list->user_list[i].username,
-                    -MAX_SESSION_COUNT, list->user_list[i].session_id, 6, role);
+                    -MAX_SESSION_COUNT, list->user_list[i].session_id, -6, role);
             strcat(active_user_list, message);
         }
     }
     pthread_mutex_unlock(*mutex_ptr);
+    return 1;
 }
 
 void get_active_user_list(user_database* list, char * active_user_list,  pthread_mutex_t *mutex) {
@@ -158,6 +155,7 @@ void get_active_user_list(user_database* list, char * active_user_list,  pthread
     fprintf(stdout, "%s", active_user_list);
     pthread_mutex_unlock(*mutex_ptr);
 }
+
 user_t * user_list_find(user_database* list, unsigned char * username) {
     if (username == NULL){
         fprintf(stderr, "Error: username is NULL.\n");
