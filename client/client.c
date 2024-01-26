@@ -473,19 +473,7 @@ void login(int * socket_fd, char * ip_address, char * port, char * username, cha
     // create a thread to handle server messages
     pthread_create(&(*thread), NULL, &server_message_handler, &(*socket_fd));
     // prepare and send login message
-    message_t msg;
-    char buffer[maximum_buffer_size];
-    fill_message(&msg, LOGIN, strlen(password),username, password);
-    message_to_string(&msg, msg.size, buffer);
-    unsigned int code = send_message(socket_fd,strlen(buffer), buffer);
-    if(code == 0){
-        set_server_connection_status(OFFLINE);
-        printf("Could Not reach the server at this moment\n");
-    }
-    else if (code == -1){
-        set_server_connection_status(OFFLINE);
-        printf("Connection lost\n");
-    }
+    fill_and_send_message(socket_fd, LOGIN, username, password);
     freeaddrinfo(servinfo); // all done with this structure
 
 }
@@ -545,11 +533,8 @@ void user_registration(int * socket_fd, char * ip_address, char * port, char * u
     set_server_connection_status(ON);
     pthread_create(&(*thread), NULL, &server_message_handler, &(*socket_fd));
     //send login message
-    message_t msg;
-    char buffer[maximum_buffer_size];
-    fill_message(&msg, CREATE, strlen(password),username, password);
-    message_to_string(&msg, msg.size, buffer);
-    send_message(socket_fd,strlen(buffer), buffer);
+    fill_and_send_message(socket_fd, CREATE, username, password);
+
 }
 
 /* logout from the server, leave session if in a session
@@ -565,15 +550,7 @@ void logout(int * socket_fd){
     // set flags and prepare and send EXIT message
     verified_access = OFF;
     set_server_connection_status(OFFLINE);
-    fill_message(&msg, EXIT, 0, name, NULL);
-    message_to_string(&msg, msg.size, buffer);
-    unsigned int code = send_message(socket_fd, strlen(buffer),buffer);
-    if(code == 0){
-        printf("Could Not reach the server at this moment\n");
-    }
-    else if (code == -1){
-        printf("Connection lost\n");
-    }
+    fill_and_send_message(socket_fd, EXIT, name, NULL);
 }
 
 /* join a session if user not in one
@@ -585,17 +562,7 @@ void join_session(int * socket_fd, char * session_id){
         return;
     }
     // prepare and send JOIN message
-    message_t msg;
-    char buffer[maximum_buffer_size];
-    fill_message(&msg, JOIN, strlen(session_id), name, session_id);
-    message_to_string(&msg, msg.size, buffer);
-    unsigned int code = send_message(socket_fd, strlen(buffer),buffer);
-    if(code == 0){
-        printf("Could Not reach the server at this moment\n");
-    }
-    else if (code == -1){
-        printf("Connection lost\n");
-    }
+    fill_and_send_message(socket_fd, JOIN, name, session_id);
 }
 
 /* leave session if user in a session*/
@@ -610,15 +577,7 @@ void leave_session(int * socket_fd){
     char buffer[maximum_buffer_size];
     session_status = OFFLINE;
     role = USER;
-    fill_message(&msg, LEAVE_SESS, 0, name, NULL);
-    message_to_string(&msg, msg.size, buffer);
-    unsigned int code = send_message(socket_fd, strlen(buffer),buffer);
-    if(code == 0){
-        printf("Could Not reach the server at this moment\n");
-    }
-    else if (code == -1){
-        printf("Connection lost\n");
-    }
+    fill_and_send_message(socket_fd, LEAVE_SESS, name, NULL);
 }
 
 /* create a session if user not in one*/
@@ -632,39 +591,19 @@ void create_session(int * socket_fd, char * session_id){
     // prepare and send a request to create a session
     message_t msg;
     char buffer[maximum_buffer_size];
-    fill_message(&msg, NEW_SESS, strlen(session_id), name, session_id);
-    message_to_string(&msg, msg.size, buffer);
-    unsigned int code = send_message(socket_fd, strlen(buffer),buffer);
-    if(code == 0){
-        printf("Could Not reach the server at this moment\n");
-    }
-    else if (code == -1){
-        printf("Connection lost\n");
-    }
+    fill_and_send_message(socket_fd, NEW_SESS, name, session_id);
 }
 
 /* send a request to the server to list all
  online users and their sessions*/
 void list(int * socket_fd){
     // prepare and send a request to list all online users
-    message_t msg;
-    char buffer[maximum_buffer_size];
-    fill_message(&msg, QUERY, 0, name, NULL);
-    message_to_string(&msg, msg.size, buffer);
-    unsigned int code = send_message(socket_fd, strlen(buffer),buffer);
-    if(code == 0){
-        printf("Could Not reach the server at this moment\n");
-    }
-    else if (code == -1){
-        printf("Connection lost\n");
-    }
+    fill_and_send_message(socket_fd, QUERY, name, NULL);
 }
 
 /* send a request to the server to list all
  users in a session specified by session_id*/
 void user_list(int * socket_fd, char * session_id){
-    message_t msg;
-    char buffer[maximum_buffer_size];
     // if request to list users in a forbidden session,
     // print error message and return
     if(strcmp(session_id, NOT_IN_SESSION) == 0){
@@ -672,15 +611,7 @@ void user_list(int * socket_fd, char * session_id){
         return;
     }
     // prepare and send a request to list all users in a session
-    fill_message(&msg, SESS_QUERY, strlen(session_id), name, session_id);
-    message_to_string(&msg, msg.size, buffer);
-    unsigned int code = send_message(socket_fd, strlen(buffer),buffer);
-    if(code == 0){
-        printf("Could Not reach the server at this moment\n");
-    }
-    else if (code == -1){
-        printf("Connection lost\n");
-    }
+    fill_and_send_message(socket_fd, SESS_QUERY, name, session_id);
 }
 
 /* terminate the program by setting flags
@@ -701,17 +632,7 @@ void promote(int *socket_fd, char* username){
         return;
     }
     // prepare and send a request to promote a user
-    message_t msg;
-    char buffer[maximum_buffer_size];
-    fill_message(&msg, PROMOTE, strlen(username), name, username);
-    message_to_string(&msg, msg.size, buffer);
-    unsigned int code = send_message(socket_fd, strlen(buffer),buffer);
-    if(code == 0){
-        printf("Could Not reach the server at this moment\n");
-    }
-    else if (code == -1){
-        printf("Connection lost\n");
-    }
+    fill_and_send_message(socket_fd, PROMOTE, name, username);
 }
 
 /* send a request to the server to kick a user
@@ -723,17 +644,7 @@ void kick(int *socket_fd, char* username){
         return;
     }
     // prepare and send a request to kick a user
-    message_t msg;
-    char buffer[maximum_buffer_size];
-    fill_message(&msg, KICK, strlen(username), name, username);
-    message_to_string(&msg, msg.size, buffer);
-    unsigned int code = send_message(socket_fd, strlen(buffer),buffer);
-    if(code == 0){
-        printf("Could Not reach the server at this moment\n");
-    }
-    else if (code == -1){
-        printf("Connection lost\n");
-    }
+    fill_and_send_message(socket_fd, KICK, name, username);
 }
 
 /* set the server connection status*/
@@ -779,5 +690,4 @@ int check_commands(char* command){
     if (strcmp (command, "/promote") == 0) return promote_command;
     if (strcmp (command, "/userlist") == 0) return userlist_command;
     return invalid_command;
-
 }

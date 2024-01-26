@@ -3,7 +3,7 @@
 #include "../message/message.h"
 
 //command types
-#define invalid_command -1
+#define invalid_command (-1)
 #define login_command 0
 #define logout_command 1
 #define join_session_command 2

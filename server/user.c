@@ -201,10 +201,6 @@ int get_user_count_in_database(user_database* list, pthread_mutex_t * mutex){
 int get_user_count_in_a_session(user_database* list, char * session_id, pthread_mutex_t * mutex){
     pthread_mutex_t **mutex_ptr = &mutex;
     pthread_mutex_lock(*mutex_ptr);
-    if (strcmp(session_id, NOT_IN_SESSION) == 0){
-        fprintf(stderr, "Error: session_id reserved.\n");
-        return SESSION_NAME_RESERVED;
-    }
     int count = 0;
     for (int i = 0; i < list->count; ++i) {
         if (strcmp(list->user_list[i].session_id, session_id) == 0) {
@@ -246,7 +242,7 @@ void user_exit_current_session(user_database* list, char * username, pthread_mut
     strcpy(user->session_id, NOT_IN_SESSION);
     pthread_mutex_unlock(mutex);
     if (get_user_count_in_a_session(list, session_id, mutex) == 0){
-        fprintf(stdout, "Session %s is empty and has been dismissed!\n", user->session_id);
+        fprintf(stdout, "Session %s is empty and has been dismissed!\n", session_id);
     }
 
 }

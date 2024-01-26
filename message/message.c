@@ -47,7 +47,7 @@ void fill_message(message_t * message, unsigned int type, unsigned int size, cha
  * string operations*/
 int message_to_string(message_t * message, unsigned int message_data_size, char * buffer){
     sprintf(buffer, "%d:%d:%s:", message->type, message_data_size, message->source);
-    int count = strlen(buffer);
+    unsigned int count = strlen(buffer);
     if (message_data_size == 0){
         memset(message->data, 0, sizeof(message->data));
     }
@@ -60,7 +60,7 @@ int message_to_string(message_t * message, unsigned int message_data_size, char 
         }
         buffer[count] = '\0';
     }
-    return count;
+    return (int)count;
 }
 
 /* convert string buffer to message
@@ -137,3 +137,14 @@ int receive_message(const int * socket_fd, char * message){
     return (int)bytes_read;
 }
 
+void fill_and_send_message(const int * socket_fd, unsigned int type, char * source, char * data){
+    message_t reply_message;
+    char buffer[maximum_buffer_size];
+    memset(buffer, 0, sizeof(buffer));
+    memset(&reply_message, 0, sizeof(reply_message));
+    int size = 0;
+    if(data != NULL) size = strlen(data);
+    fill_message(&reply_message, type, size, source, data);
+    message_to_string(&reply_message, reply_message.size, buffer);
+    send_message(socket_fd, strlen(buffer), buffer);
+}

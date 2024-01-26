@@ -122,7 +122,7 @@ int main(int argc, char* argv[]){
     }
     //wait for other threads to finish before exiting
     remove_all_users_in_database(user_list, &user_list_mutex);
-    return 1;
+    return 0;
 }
 
 /* handle each connection in a separate thread
@@ -179,14 +179,15 @@ void* connection_handler(void* accept_fd){
                 strcpy(source, (char*)received_message.source);
                 fprintf(stdout, "user %s just landed!!\n", source);
                 fprintf(stdout,"============================\n");
-                fill_message(&reply_message,LO_ACK,0, (char *)received_message.source, NULL);
+                fill_and_send_message(&socket_file_descriptor,
+                                      LO_ACK, (char *)received_message.source, NULL);
             }
             else{
-                fill_message(&reply_message, LO_NAK,
-                             strlen(select_login_message(reply_type)),
-                             (char *)received_message.source, select_login_message(reply_type));
+                fill_and_send_message(&socket_file_descriptor,
+                                      LO_NAK, (char *)received_message.source,
+                                      select_login_message(reply_type));
             }
-            message_to_string(&reply_message, reply_message.size, buffer);
+            continue;
         }
 
         // if message type is create, check if the user is already logged in
@@ -204,14 +205,14 @@ void* connection_handler(void* accept_fd){
                 strcpy(source, (char*)received_message.source);
                 fprintf(stdout, "user %s just landed!!\n", source);
                 fprintf(stdout,"============================\n");
-                fill_message(&reply_message,RG_ACK,0, (char *)received_message.source, NULL);
+                fill_and_send_message(&socket_file_descriptor,
+                                      RG_ACK, (char *)received_message.source, NULL);
             }
-            else{
-                fill_message(&reply_message, RG_NAK,
-                             strlen(user_registration_message(reply_type)),
-                             (char *)received_message.source, user_registration_message(reply_type));
-            }
-            message_to_string(&reply_message, reply_message.size, buffer);
+            else
+                fill_and_send_message(&socket_file_descriptor,
+                                      RG_NAK, (char *)received_message.source,
+                                      user_registration_message(reply_type));
+            continue;
         }
         // exit current user and reset their user information
         // name and password are not reset
@@ -239,9 +240,9 @@ void* connection_handler(void* accept_fd){
             char list[maximum_buffer_size];
             memset(list, 0, sizeof(list));
             get_active_user_list_in_database(user_list, list, &rw_mutex);
-            fill_message(&reply_message, QU_ACK,
-                         strlen(list), (char *)received_message.source, list);
-            message_to_string(&reply_message, reply_message.size, buffer);
+            fill_and_send_message(&socket_file_descriptor,
+                                  QU_ACK, (char *)received_message.source, list);
+            continue;
         }
         // send the active user list for a session to the client
         // and do some edge case checking
@@ -249,16 +250,16 @@ void* connection_handler(void* accept_fd){
             char list[maximum_buffer_size];
             memset(list, 0, sizeof(list));
             int code = get_active_user_list_in_a_session(user_list,list,
-                                            (char*)received_message.data, &rw_mutex);
+                                                         (char*)received_message.data, &rw_mutex);
             if (code == SESSION_NAME_INVALID)
-                fill_message(&reply_message, SQ_NAK,
-                             strlen(session_response_message(code)),
-                             (char *)received_message.source,
-                             session_response_message(code));
+                fill_and_send_message(&socket_file_descriptor,
+                                  SQ_NAK, (char *)received_message.source,
+                                  session_response_message(code));
             else
-                fill_message(&reply_message, SQ_ACK,
-                         strlen(list), (char *)received_message.source, list);
-            message_to_string(&reply_message, reply_message.size, buffer);
+                fill_and_send_message(&socket_file_descriptor,
+                                      SQ_ACK, (char *)received_message.source,
+                                      list);
+            continue;
         }
         // send a group message in a session
         if (received_message.type == MESSAGE){
@@ -340,10 +341,6 @@ int verify_login(unsigned char * username, unsigned char * password){
  * reset is done in the handler function*/
 void server_side_user_exit(char * username){
     user_t* user = database_search_user(user_list, (unsigned char*)username);
-    if (user == NULL){
-        fprintf(stderr, "Error: user is NULL.\n");
-        return;
-    }
     fprintf(stdout,"============================\n");
     printf("user %s is exiting.\n", user->username);
     if (user->in_session == ONLINE){
@@ -362,46 +359,22 @@ void server_side_user_exit(char * username){
 void server_side_session_create(char * username, char * session_id){
     pthread_mutex_lock(&user_list_mutex);
     user_t* user = database_search_user(user_list, (unsigned char*)username);
-    if (user == NULL){
-        fprintf(stderr, "Error: user is NULL.\n");
-        pthread_mutex_unlock(&user_list_mutex);
-        return;
-    }
     message_t reply_message;
     char buffer[maximum_buffer_size];
     int count = get_user_count_in_a_session(user_list, session_id, &rw_mutex);
 
-    if(user->in_session == ONLINE){
-        fill_message(&reply_message, JN_NAK,
-                     strlen(session_response_message(USER_NAME_IN_SESSION)),
-                     username,session_response_message(USER_NAME_IN_SESSION));
-        message_to_string(&reply_message, reply_message.size, buffer);
-        send_message(&user->socket_fd, strlen(buffer), buffer);
-        pthread_mutex_unlock(&user_list_mutex);
-        return;
-    }
-    else if (count == 0){
+    if (count == 0){
         memset((char*)user->session_id, 0, sizeof(user->session_id));
         strcpy((char*)user->session_id, session_id);
         user->in_session = ONLINE;
         user->role = ADMIN;
-        fill_message(&reply_message, NS_ACK,
-                     strlen(session_id),
-                     username,session_id);
-    }
-    else if (count == SESSION_NAME_RESERVED){
-        fill_message(&reply_message, NEW_SESS,
-                     strlen(session_response_message(SESSION_NAME_RESERVED)),
-                     username,session_response_message(SESSION_NAME_RESERVED));
+        fill_and_send_message(&user->socket_fd, NS_ACK,username,
+                              session_id);
     }
     else{
-        fill_message(&reply_message, NEW_SESS,
-                     strlen(session_response_message(SESSION_EXISTS)),
-                     username,session_response_message(SESSION_EXISTS));
+        fill_and_send_message(&user->socket_fd, NEW_SESS,username,
+                              session_response_message(SESSION_EXISTS));
     }
-
-    message_to_string(&reply_message, reply_message.size, buffer);
-    send_message(&user->socket_fd, strlen(buffer), buffer);
     pthread_mutex_unlock(&user_list_mutex);
 }
 
@@ -413,11 +386,6 @@ void server_side_session_create(char * username, char * session_id){
 void server_side_session_join(char * username, char * session_id){
     pthread_mutex_lock(&user_list_mutex);
     user_t* user = database_search_user(user_list, (unsigned char*)username);
-    if (user == NULL){
-        fprintf(stderr, "Error: user is NULL.\n");
-        pthread_mutex_unlock(&user_list_mutex);
-        return;
-    }
     message_t reply_message;
     char buffer[maximum_buffer_size];
 
@@ -425,34 +393,27 @@ void server_side_session_join(char * username, char * session_id){
 
     if (user->in_session == ONLINE){
         printf("user %s is already in a session.\n", user->username);
-        fill_message(&reply_message, JN_NAK,
-                     strlen(session_response_message(USER_NAME_IN_SESSION)),
-                     username,session_response_message(USER_NAME_IN_SESSION));
+        fill_and_send_message(&user->socket_fd, JN_NAK,username,
+                              session_response_message(USER_NAME_IN_SESSION));
     }
     else if (session_user_count == 0){
         printf("session %s does not exist.\n", session_id);
-        fill_message(&reply_message, JN_NAK,
-                     strlen(session_response_message(SESSION_NAME_INVALID)),
-                     username,session_response_message(SESSION_NAME_INVALID));
+        fill_and_send_message(&user->socket_fd, JN_NAK,username,
+                              session_response_message(SESSION_NAME_INVALID));
     }
     else if (session_user_count == MAX_SESSION_USER){
         printf("session %s is full!\n", session_id);
-        fill_message(&reply_message, JN_NAK,
-                     strlen(session_response_message(SESSION_AT_FULL_CAPACITY)),
-                     username,session_response_message(SESSION_AT_FULL_CAPACITY));
+        fill_and_send_message(&user->socket_fd, JN_NAK,username,
+                              session_response_message(SESSION_AT_FULL_CAPACITY));
     }
     else{
         memset((char*)user->session_id, 0, sizeof(user->session_id));
         strcpy((char*)user->session_id, session_id);
         user->in_session = ONLINE;
         printf("user %s joined session %s.\n", user->username, user->session_id);
-        fill_message(&reply_message, JN_ACK,
-                     strlen(session_id),
-                     username,session_id);
+        fill_and_send_message(&user->socket_fd, JN_ACK,username, session_id);
     }
-
-    message_to_string(&reply_message, reply_message.size, buffer);
-    send_message(&user->socket_fd, strlen(buffer), buffer);
+    
     pthread_mutex_unlock(&user_list_mutex);
 }
 
@@ -463,10 +424,6 @@ void server_side_session_join(char * username, char * session_id){
 void server_side_session_leave(char *username){
     pthread_mutex_lock(&user_list_mutex);
     user_t* user = database_search_user(user_list, (unsigned char*)username);
-    if (user == NULL){
-        fprintf(stderr, "Error: user is NULL.\n");
-        return;
-    }
     if (user->in_session == OFFLINE){
         return;
     }
@@ -497,7 +454,8 @@ void user_login(char * username, unsigned char status, const int* socket_fd){
     pthread_mutex_lock(&user_list_mutex);
     user_t* user = database_search_user(user_list, (unsigned char*)username);
     if (user == NULL){
-        fprintf(stderr, "Error: user is NULL.\n");
+        fprintf(stderr, "Error: user does not exist in the database.\n");
+        pthread_mutex_unlock(&user_list_mutex);
         return;
     }
     user->socket_fd = *socket_fd;
@@ -514,8 +472,6 @@ void user_login(char * username, unsigned char status, const int* socket_fd){
  * of the session error code*/
 char* session_response_message(int value){
     switch (value) {
-        case SESSION_NAME_RESERVED:
-            return "Session name is reserved!.";
         case SESSION_NAME_INVALID:
             return "Session name is not found!.";
         case SESSION_AT_FULL_CAPACITY:
@@ -649,13 +605,13 @@ int user_registration(char * username, char * password, const int  *socket_fd){
         return code;
     }
     print_all_users_in_a_database(user_list);
-    wrtie_to_database(get_user_count_in_database(user_list,&rw_mutex) - 1);
+    write_to_database(get_user_count_in_database(user_list,&rw_mutex) - 1);
     pthread_mutex_unlock(&user_list_mutex);
     return code;
 }
 
 /* writes a new user to the database file*/
-void wrtie_to_database(int user_index){
+void write_to_database(int user_index){
     FILE * fp;
     fp = fopen(database_path, "a");
     if (fp == NULL){
@@ -691,47 +647,32 @@ void server_side_kick_user(char* sender, char* target){
     char buffer[maximum_buffer_size] = {0};
 
     if (target_user == NULL){
-        fill_message(&reply_message, KI_NAK,
-                     strlen(session_response_message(USER_DOES_NOT_EXIST)),
-                     sender,session_response_message(USER_DOES_NOT_EXIST));
-        message_to_string(&reply_message, reply_message.size, buffer);
-        send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+        fill_and_send_message(&sender_user->socket_fd, KI_NAK,
+                              sender,session_response_message(USER_DOES_NOT_EXIST));
         pthread_mutex_unlock(&user_list_mutex);
         return;
     }
     if (target_user->status == OFFLINE){
-        fill_message(&reply_message, KI_NAK,
-                     strlen(session_response_message(USER_NOT_ONLINE)),
-                     sender,session_response_message(USER_NOT_ONLINE));
-        message_to_string(&reply_message, reply_message.size, buffer);
-        send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+        fill_and_send_message(&sender_user->socket_fd, KI_NAK,
+                              sender,session_response_message(USER_NOT_ONLINE));
         pthread_mutex_unlock(&user_list_mutex);
         return;
     }
     if (target_user->in_session == OFFLINE){
-        fill_message(&reply_message, KI_NAK,
-                     strlen(session_response_message(USER_NOT_IN_SESSION)),
-                     sender,session_response_message(USER_NOT_IN_SESSION));
-        message_to_string(&reply_message, reply_message.size, buffer);
-        send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+        fill_and_send_message(&sender_user->socket_fd, KI_NAK,
+                              sender,session_response_message(USER_NOT_IN_SESSION));
         pthread_mutex_unlock(&user_list_mutex);
         return;
     }
     else if (strcmp(target_user->session_id,sender_user->session_id) != 0){
-        fill_message(&reply_message, KI_NAK,
-                     strlen(session_response_message(USER_IN_DIFFERENT_SESSION)),
-                     sender,session_response_message(USER_IN_DIFFERENT_SESSION));
-        message_to_string(&reply_message, reply_message.size, buffer);
-        send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+        fill_and_send_message(&sender_user->socket_fd, KI_NAK,
+                              sender,session_response_message(USER_IN_DIFFERENT_SESSION));
         pthread_mutex_unlock(&user_list_mutex);
         return;
     }
     else if (target_user->role == ADMIN){
-        fill_message(&reply_message, KI_NAK,
-                     strlen(session_response_message(TARGET_IS_ADMIN)),
-                     sender,session_response_message(TARGET_IS_ADMIN));
-        message_to_string(&reply_message, reply_message.size, buffer);
-        send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+        fill_and_send_message(&sender_user->socket_fd, KI_NAK,
+                              sender,session_response_message(TARGET_IS_ADMIN));
         pthread_mutex_unlock(&user_list_mutex);
         return;
     }
@@ -739,21 +680,13 @@ void server_side_kick_user(char* sender, char* target){
     target_user->in_session = OFFLINE;
     memset((char*)target_user->session_id, 0, sizeof(target_user->session_id));
     strcpy((char*)target_user->session_id, NOT_IN_SESSION);
-    fill_message(&reply_message, KI_MESSAGE,
-                 strlen(sender_user->session_id),
-                 sender,sender_user->session_id);
-    message_to_string(&reply_message, reply_message.size, buffer);
-    send_message(&target_user->socket_fd, strlen(buffer), buffer);
+    fill_and_send_message(&target_user->socket_fd, KI_MESSAGE,
+                          "server",sender_user->session_id);
 
     memset(&reply_message, 0, sizeof(reply_message));
     memset(buffer, 0, sizeof(buffer));
-
-    fill_message(&reply_message, KI_ACK,
-                 strlen((char *)target_user->username),
-                 sender,(char *)target_user->username);
-    message_to_string(&reply_message, reply_message.size, buffer);
-    send_message(&sender_user->socket_fd, strlen(buffer), buffer);
-
+    fill_and_send_message(&sender_user->socket_fd, KI_ACK,
+                          sender,(char *)target_user->username);
     pthread_mutex_unlock(&user_list_mutex);
 }
 
@@ -769,66 +702,46 @@ void server_side_promote_user(char* sender, char* target){
     char buffer[maximum_buffer_size] = {0};
 
     if (target_user == NULL){
-        fill_message(&reply_message, PM_NAK,
-                     strlen(session_response_message(USER_DOES_NOT_EXIST)),
-                     sender,session_response_message(USER_DOES_NOT_EXIST));
-        message_to_string(&reply_message, reply_message.size, buffer);
-        send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+        fill_and_send_message(&sender_user->socket_fd, PM_NAK,
+                              sender,session_response_message(USER_DOES_NOT_EXIST));
         pthread_mutex_unlock(&user_list_mutex);
         return;
     }
     if (target_user->status == OFFLINE){
-        fill_message(&reply_message, PM_NAK,
-                     strlen(session_response_message(USER_NOT_ONLINE)),
-                     sender,session_response_message(USER_NOT_ONLINE));
-        message_to_string(&reply_message, reply_message.size, buffer);
-        send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+        fill_and_send_message(&sender_user->socket_fd, PM_NAK,
+                              sender,session_response_message(USER_NOT_ONLINE));
         pthread_mutex_unlock(&user_list_mutex);
         return;
     }
     if (target_user->in_session == OFFLINE){
-        fill_message(&reply_message, PM_NAK,
-                     strlen(session_response_message(USER_NOT_IN_SESSION)),
-                     sender,session_response_message(USER_NOT_IN_SESSION));
-        message_to_string(&reply_message, reply_message.size, buffer);
-        send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+        fill_and_send_message(&sender_user->socket_fd, PM_NAK,
+                              sender,session_response_message(USER_NOT_IN_SESSION));
         pthread_mutex_unlock(&user_list_mutex);
         return;
     }
     else if (strcmp(target_user->session_id,sender_user->session_id) != 0){
-        fill_message(&reply_message, PM_NAK,
-                     strlen(session_response_message(USER_IN_DIFFERENT_SESSION)),
-                     sender,session_response_message(USER_IN_DIFFERENT_SESSION));
-        message_to_string(&reply_message, reply_message.size, buffer);
-        send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+        fill_and_send_message(&sender_user->socket_fd, PM_NAK,
+                              sender,session_response_message(USER_IN_DIFFERENT_SESSION));
         pthread_mutex_unlock(&user_list_mutex);
         return;
     }
     else if (target_user->role == ADMIN){
-        fill_message(&reply_message, PM_NAK,
-                     strlen(session_response_message(TARGET_IS_ADMIN)),
-                     sender,session_response_message(TARGET_IS_ADMIN));
-        message_to_string(&reply_message, reply_message.size, buffer);
-        send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+        fill_and_send_message(&sender_user->socket_fd, PM_NAK,
+                              sender,session_response_message(TARGET_IS_ADMIN));
         pthread_mutex_unlock(&user_list_mutex);
         return;
     }
 
     target_user->role = ADMIN;
     sender_user->role = USER;
-    fill_message(&reply_message, PM_MESSAGE,
-                 0,sender,NULL);
-    message_to_string(&reply_message, reply_message.size, buffer);
-    send_message(&target_user->socket_fd, strlen(buffer), buffer);
+    fill_and_send_message(&target_user->socket_fd, PM_MESSAGE,
+                          "server",NULL);
 
     memset(&reply_message, 0, sizeof(reply_message));
     memset(buffer, 0, sizeof(buffer));
 
-    fill_message(&reply_message, PM_ACK,
-                 strlen((char *)target_user->username),
-                 sender,(char *)target_user->username);
-    message_to_string(&reply_message, reply_message.size, buffer);
-    send_message(&sender_user->socket_fd, strlen(buffer), buffer);
+    fill_and_send_message(&sender_user->socket_fd, PM_ACK,
+                          sender,(char *)target_user->username);
 
     pthread_mutex_unlock(&user_list_mutex);
 }

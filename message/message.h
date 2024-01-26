@@ -81,12 +81,6 @@ int message_to_string(message_t * message, unsigned int message_data_size, char 
 void string_to_message(message_t * message, const char * buffer);
 int send_message(const int * socket_fd,unsigned int message_size, char * message);
 int receive_message(const int * socket_fd, char * message);
-
-////Function Prototypes
-//void fill_message(message_t* msg, unsigned int type, unsigned int size, char* source, char* data);
-//void message_to_buffer(message_t* msg, unsigned char* buffer);
-//void buffer_to_message(message_t* msg, const unsigned char* buffer);
-//int error_check(int condition, int check, const char *error_message);
-//void decode_server_response(unsigned int type, char* response);
+void fill_and_send_message(const int * socket_fd, unsigned int type, char * source, char * data);
 
 #endif
