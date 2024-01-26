@@ -329,12 +329,10 @@ int verify_login(unsigned char * username, unsigned char * password){
     if (strcmp((char*)user->password, (char*)password) == 0){
         if (user->status == ONLINE)
             return ALREADY_LOGIN;
-        else
-            return PASSWORD_ERROR;
         return SUCCESS_LOGIN;
     }
 
-    return SUCCESS_LOGIN;
+    return PASSWORD_ERROR;
 }
 
 /* exit a user by clearing their statuses
