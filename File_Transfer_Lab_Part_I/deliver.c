@@ -16,7 +16,7 @@
 // will always be IPv4
 int main(int argc, char* argv[]){
 	if(argc != 3){
-		printf("the number of parameters is inccorrect!!\n");
+		fprintf(stdout, "usage: deliver <hostname> <port>\n");
 		exit(3);
 	}
 

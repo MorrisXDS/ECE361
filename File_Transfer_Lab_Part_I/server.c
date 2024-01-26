@@ -16,6 +16,10 @@
 // will always be IPv4
 int main(int argc, char* argv[]){
     // cited from page 38 "Beej's Guide to Network Programming", modified
+    if(argc != 2){
+		fprintf(stdout, "usage: server <port>\n");
+		exit(3);
+	}
     struct addrinfo hints, *servinfo, *p; int rv;
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_INET; // IPv4
