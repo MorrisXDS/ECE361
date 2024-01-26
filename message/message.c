@@ -1,14 +1,29 @@
 #include "message.h"
 
-void fill_message(message_t * message, unsigned int type,unsigned int size, char * source, char * data){
+
+/* fill a message in the form of message_t
+  message_t {
+    unsigned int type;
+    unsigned int size;
+    unsigned char source[MAX_NAME];
+    unsigned char data[MAX_DATA];
+};*/
+void fill_message(message_t * message, unsigned int type, unsigned int size, char * source, char * data){
+    // set message size and type
     message->size = size;
     message->type = type;
+    // if size is 0, zero out the message data
     if (size == 0){
         memset(message->data, 0, sizeof(message->data));
     }
+    // if not a message type, copy the data directly
     else if(message->type != MESSAGE){
         strcpy((char*)message->data, data);
     }
+    // if message type, handle the data by
+    // skipping null characters and assign
+    // char by char and add a null character
+    // at the end
     else {
         for(int i = 0; i < message->size; ++i) {
             message->data[i] = data[i];
@@ -19,9 +34,17 @@ void fill_message(message_t * message, unsigned int type,unsigned int size, char
         }
         message->data[message->size-1] = '\0';
     }
+    // specify who the message was originally from
     strcpy((char*)message->source, source);
 }
 
+/* convert message to an agreed string buffer format
+ * <message_type>:<message_size>:<message_source>:data
+ * the length of data is determined by message_size as
+ * there might be multiple null terminators in message
+ * data which are regarded as the end of string.
+ * incomplete stringification may occur if using
+ * string operations*/
 int message_to_string(message_t * message, unsigned int message_data_size, char * buffer){
     sprintf(buffer, "%d:%d:%s:", message->type, message_data_size, message->source);
     int count = strlen(buffer);
@@ -40,6 +63,11 @@ int message_to_string(message_t * message, unsigned int message_data_size, char 
     return count;
 }
 
+/* convert string buffer to message
+ * String functions are not used due to
+ * the fact that there may be multiple
+ * null terminators in the data which
+ * are considered the end of strings*/
 void string_to_message(message_t * message, const char * buffer){
     unsigned char content[12];
     int count = 0;
@@ -77,6 +105,11 @@ void string_to_message(message_t * message, const char * buffer){
     }
 
 }
+
+/* send message to socket
+ * return SEND_ERROR if send is not fully successful
+ * return CONNECTION_REFUSED if connection is refused
+ * return bytes sent if successful*/
 int send_message(const int * socket_fd, unsigned int message_size, char * message){
     size_t bytes_sent = send(*socket_fd, message, message_size, 0);
     if(bytes_sent == -1 || bytes_sent != message_size){
@@ -89,6 +122,10 @@ int send_message(const int * socket_fd, unsigned int message_size, char * messag
     return (int)bytes_sent;
 }
 
+/* receive message from socket
+ * return RECEIVE_ERROR if receive errors (network issues)
+ * return CONNECTION_REFUSED if connection is refused
+ * return bytes received if successful*/
 int receive_message(const int * socket_fd, char * message){
     size_t bytes_read = recv(*socket_fd, message, maximum_buffer_size, 0);
     if(bytes_read == -1){

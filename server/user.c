@@ -1,6 +1,7 @@
 #include "user.h"
 
-user_database* user_list_init(){
+/* Initialize a user list */
+user_database* user_database_init(){
     int data_base_initial_capacity = 16;
     user_database* user_list = malloc(sizeof(user_database));
     user_list->capacity = data_base_initial_capacity;
@@ -13,6 +14,7 @@ user_database* user_list_init(){
     return user_list;
 }
 
+/* Create a user */
 int create_user(user_t * user, user_t * user_to_add) {
     strcpy((char*) user->username,(char*) user_to_add->username);
     strcpy((char*) user->password,(char*) user_to_add->password);
@@ -25,20 +27,25 @@ int create_user(user_t * user, user_t * user_to_add) {
     return USER_CREATE_SUCCESS;
 }
 
-int user_list_add_user(user_database* list, user_t* user_data, pthread_mutex_t * mutex) {
+/* add a user to a user_database
+ * and do error check*/
+int user_database_add_user(user_database* list, user_t* user_data, pthread_mutex_t * mutex) {
     pthread_mutex_t **mutex_ptr = &mutex;
-    int user_count = user_list_count(list, *mutex_ptr);
+    int user_count = get_user_count_in_database(list, *mutex_ptr);
     pthread_mutex_lock(mutex);
+    //check if user list is full
     if (user_count >= MAX_USER_COUNT) {
         fprintf(stderr, "User list is full\n");
         pthread_mutex_unlock(mutex);
         return USER_LIST_FULL;
     }
-    if (user_list_find(list, user_data->username) != NULL) {
+    //check if user already exists
+    if (database_search_user(list, user_data->username) != NULL) {
         fprintf(stderr, "User already exists\n");
         pthread_mutex_unlock(mutex);
         return USER_ALREADY_EXIST;
     }
+    //add user to database
     user_t new_user = {0};
     create_user(&new_user, user_data);
 
@@ -50,7 +57,7 @@ int user_list_add_user(user_database* list, user_t* user_data, pthread_mutex_t *
 }
 
 //will never be called
-void user_list_remove_by_name(user_database* list, char * name, pthread_mutex_t * mutex) {
+void remove_user_by_name_in_database(user_database* list, char * name, pthread_mutex_t * mutex) {
     pthread_mutex_t **mutex_ptr = &mutex;
     pthread_mutex_lock(*mutex_ptr);
     for (int i = 0; i < list->count; ++i) {
@@ -69,7 +76,10 @@ void user_list_remove_by_name(user_database* list, char * name, pthread_mutex_t 
     pthread_mutex_unlock(*mutex_ptr);
 }
 
-void user_list_remove_all(user_database* list, pthread_mutex_t * mutex){
+/* Remove all users from a database
+ * and releases resources held
+ * by the database*/
+void remove_all_users_in_database(user_database* list, pthread_mutex_t * mutex){
     pthread_mutex_t **mutex_ptr = &mutex;
     pthread_mutex_lock(*mutex_ptr);
     free(list->user_list);
@@ -77,7 +87,8 @@ void user_list_remove_all(user_database* list, pthread_mutex_t * mutex){
     pthread_mutex_unlock(*mutex_ptr);
 }
 
-void user_list_print(user_database* list){
+/* Print all users in a database */
+void print_all_users_in_a_database(user_database* list){
     fprintf(stdout, "User list:\n");
     fprintf(stdout, "%*s %*s %*s %*s\n", -MAX_NAME, "Name", -MAX_SESSION_LENGTH, "Session ID", -INET6_ADDRSTRLEN, "IP Address", -6, "Port");
     for (int i = 0; i < list->count; ++i) {
@@ -86,7 +97,8 @@ void user_list_print(user_database* list){
     }
 }
 
-void active_user_list_print(user_database * list){
+/* print all online users in a database */
+void print_active_users_in_a_database(user_database * list){
     fprintf(stdout, "Active user list:\n");
     fprintf(stdout, "%*s %*s\n", -MAX_NAME, "Name", -MAX_SESSION_LENGTH, "Session ID");
     for (int i = 0; i < list->count; ++i) {
@@ -97,8 +109,10 @@ void active_user_list_print(user_database * list){
     }
 }
 
-int get_active_user_list_by_session(user_database* list, char * active_user_list, char * session_id,  pthread_mutex_t *mutex){
-    if (user_list_count_by_session_id(list, session_id, mutex) == 0){
+/* print all online users in a session by session_id
+ * format: <username> <session_id> <role>*/
+int get_active_user_list_in_a_session(user_database* list, char * active_user_list, char * session_id,  pthread_mutex_t *mutex){
+    if (get_user_count_in_a_session(list, session_id, mutex) == 0){
         fprintf(stderr, "Error: session_id is invalid.\n");
         return SESSION_NAME_INVALID;
     }
@@ -129,7 +143,9 @@ int get_active_user_list_by_session(user_database* list, char * active_user_list
     return 1;
 }
 
-void get_active_user_list(user_database* list, char * active_user_list,  pthread_mutex_t *mutex) {
+/* print all online users in a database
+ * format: <username> <session_id>*/
+void get_active_user_list_in_database(user_database* list, char * active_user_list,  pthread_mutex_t *mutex) {
     pthread_mutex_t **mutex_ptr = &mutex;
     pthread_mutex_lock(*mutex_ptr);
     if (list == NULL){
@@ -156,7 +172,10 @@ void get_active_user_list(user_database* list, char * active_user_list,  pthread
     pthread_mutex_unlock(*mutex_ptr);
 }
 
-user_t * user_list_find(user_database* list, unsigned char * username) {
+/* determine if a user exists in a database
+ * and return a pointer to the user_t
+ * (which may be NULL)*/
+user_t * database_search_user(user_database* list, unsigned char * username) {
     if (username == NULL){
         fprintf(stderr, "Error: username is NULL.\n");
         return NULL;
@@ -169,7 +188,8 @@ user_t * user_list_find(user_database* list, unsigned char * username) {
     return NULL;
 }
 
-int user_list_count(user_database* list, pthread_mutex_t * mutex){
+/* return the number of users in a database */
+int get_user_count_in_database(user_database* list, pthread_mutex_t * mutex){
     pthread_mutex_t **mutex_ptr = &mutex;
     pthread_mutex_lock(*mutex_ptr);
     unsigned int count = list->count;
@@ -177,7 +197,8 @@ int user_list_count(user_database* list, pthread_mutex_t * mutex){
     return (int)count;
 }
 
-int user_list_count_by_session_id(user_database* list, char * session_id, pthread_mutex_t * mutex){
+/* return the number of users in a session */
+int get_user_count_in_a_session(user_database* list, char * session_id, pthread_mutex_t * mutex){
     pthread_mutex_t **mutex_ptr = &mutex;
     pthread_mutex_lock(*mutex_ptr);
     if (strcmp(session_id, NOT_IN_SESSION) == 0){
@@ -194,6 +215,8 @@ int user_list_count_by_session_id(user_database* list, char * session_id, pthrea
     return count;
 }
 
+/* return a pointer to the user_t by username
+ * if they exist otherwise return NULL*/
 user_t* return_user_by_username(user_database* list, unsigned char * username){
     if (username == NULL){
         fprintf(stderr, "Error: username is NULL.\n");
@@ -207,6 +230,8 @@ user_t* return_user_by_username(user_database* list, unsigned char * username){
     return NULL;
 }
 
+/* remove a user from a session if they
+ * are in a session*/
 void user_exit_current_session(user_database* list, char * username, pthread_mutex_t * mutex){
     pthread_mutex_lock(mutex);
     user_t * user = return_user_by_username(list, (unsigned char *) username);
@@ -220,7 +245,7 @@ void user_exit_current_session(user_database* list, char * username, pthread_mut
     memset(user->session_id, 0, sizeof(user->session_id));
     strcpy(user->session_id, NOT_IN_SESSION);
     pthread_mutex_unlock(mutex);
-    if (user_list_count_by_session_id(list, session_id, mutex) == 0){
+    if (get_user_count_in_a_session(list, session_id, mutex) == 0){
         fprintf(stdout, "Session %s is empty and has been dismissed!\n", user->session_id);
     }
 

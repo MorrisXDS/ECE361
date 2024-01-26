@@ -33,7 +33,7 @@ void* connection_handler(void * accept_fd);
 char* session_response_message(int value);
 void send_message_in_a_session(message_t * msg, char * session_id);
 char* get_user_ip_address_and_port(const int * socket_fd,  unsigned int * port);
-void write_to_file(int user_index);
+void wrtie_to_database(int user_index);
 int user_registration(char * username, char * password, const int  *socket_fd);
 char* user_registration_message(int value);
 void server_side_kick_user(char* doer, char* target);

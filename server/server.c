@@ -4,9 +4,18 @@
 #include "server.h"
 #include "user.h"
 
+/* serve offers a variety of services to
+ * the client. It handles login, registration,
+ * session creation, session joining, session
+ * leaving, session querying, session user
+ * querying, session messaging, session kicking,
+ * and session promoting. It deals with multiple
+ * client connections with the use of threads.*/
+
 user_database* user_list;
 pthread_mutex_t rw_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t user_list_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 
 int main(int argc, char* argv[]){
     if (argc != 2){
@@ -66,9 +75,9 @@ int main(int argc, char* argv[]){
     }
     printf("bind success\n");
 
-    user_list = user_list_init();
+    user_list = user_database_init();
     if (user_list == NULL){
-        perror("user_list_init");
+        perror("user_database_init");
         exit(errno);
     }
 
@@ -87,6 +96,9 @@ int main(int argc, char* argv[]){
     int thread_count = 0;
 
     while (1) {
+        // check if thread pool is full
+        // if full, wait for all threads to finish before exiting
+        // and clean up their resources
         if (thread_count == THREAD_CAPACITY) {
             printf("thread pool full\n");
             for (int i = 0; i < thread_count; i++){
@@ -109,11 +121,15 @@ int main(int argc, char* argv[]){
         thread_count++;
     }
     //wait for other threads to finish before exiting
-    user_list_remove_all(user_list, &user_list_mutex);
+    remove_all_users_in_database(user_list, &user_list_mutex);
     return 1;
 }
 
+/* handle each connection in a separate thread
+ each thread will be responsible for one client*/
 void* connection_handler(void* accept_fd){
+    // initialize variables
+    // and get file descriptor of the socket
     int socket_file_descriptor = *(int *)accept_fd;
     message_t received_message, reply_message;
     char buffer[maximum_buffer_size];
@@ -121,9 +137,11 @@ void* connection_handler(void* accept_fd){
     char server_connection_status = OFFLINE;
 
     while(1){
+        // memset to avoid garbage values
         memset(buffer, 0, sizeof(buffer));
         memset(&received_message, 0, sizeof(received_message));
         memset(&reply_message, 0, sizeof(reply_message));
+        // receive message from client and error check
         size_t bytes_received = receive_message(&socket_file_descriptor, buffer);
 
         if (bytes_received == CONNECTION_REFUSED){
@@ -141,8 +159,14 @@ void* connection_handler(void* accept_fd){
             perror("receive failed");
             break;
         }
+        // convert received message to a message_t struct
+        // and type check
         string_to_message(&received_message, buffer);
 
+        // if message type is login, check if the user is already logged into
+        // the same account if not, verify the login information.
+        // Note that login to a different account whilr connected
+        // is hanled in the client side
         if (received_message.type == LOGIN){
             int reply_type = verify_login(received_message.source,received_message.data);
 
@@ -164,6 +188,10 @@ void* connection_handler(void* accept_fd){
             }
             message_to_string(&reply_message, reply_message.size, buffer);
         }
+
+        // if message type is create, check if the user is already logged in
+        // if not, verify the registration information. If the registration
+        // name is already taken, send a NAK message to the client
         if (received_message.type == CREATE){
             int reply_type = user_registration((char *)received_message.source,
                                                (char *)received_message.data,
@@ -185,34 +213,42 @@ void* connection_handler(void* accept_fd){
             }
             message_to_string(&reply_message, reply_message.size, buffer);
         }
+        // exit current user and reset their user information
+        // name and password are not reset
         if (received_message.type == EXIT){
             server_side_user_exit(source);
             break;
         }
+        // join user to a session and do some edge case checking
         if (received_message.type == JOIN){
             server_side_session_join(source, (char*)received_message.data);
             continue;
         }
+        // create a new session and do some edge case checking
         if (received_message.type == NEW_SESS){
             server_side_session_create(source, (char*)received_message.data);
             continue;
         }
+        // leave a session
         if (received_message.type == LEAVE_SESS){
             server_side_session_leave(source);
             continue;
         }
+        // send the active user list to the client
         if (received_message.type == QUERY){
             char list[maximum_buffer_size];
             memset(list, 0, sizeof(list));
-            get_active_user_list(user_list, list, &rw_mutex);
+            get_active_user_list_in_database(user_list, list, &rw_mutex);
             fill_message(&reply_message, QU_ACK,
                          strlen(list), (char *)received_message.source, list);
             message_to_string(&reply_message, reply_message.size, buffer);
         }
+        // send the active user list for a session to the client
+        // and do some edge case checking
         if (received_message.type == SESS_QUERY){
             char list[maximum_buffer_size];
             memset(list, 0, sizeof(list));
-            int code = get_active_user_list_by_session(user_list,list,
+            int code = get_active_user_list_in_a_session(user_list,list,
                                             (char*)received_message.data, &rw_mutex);
             if (code == SESSION_NAME_INVALID)
                 fill_message(&reply_message, SQ_NAK,
@@ -224,7 +260,7 @@ void* connection_handler(void* accept_fd){
                          strlen(list), (char *)received_message.source, list);
             message_to_string(&reply_message, reply_message.size, buffer);
         }
-
+        // send a group message in a session
         if (received_message.type == MESSAGE){
             fill_message(&reply_message, MESSAGE,
                          received_message.size,
@@ -233,17 +269,27 @@ void* connection_handler(void* accept_fd){
             send_message_in_a_session(&reply_message, sending_user->session_id);
             continue;
         }
+
+        // kick a user from a session
+        // and do some edge case checking
         if (received_message.type == KICK){
             server_side_kick_user(source, (char*)received_message.data);
             continue;
         }
+
+        // promote a user to be the owner of a session
+        // and do some edge case checking
         if (received_message.type == PROMOTE){
             server_side_promote_user(source, (char*)received_message.data);
             continue;
         }
 
+        // send the message to the client
+        // and error check
         size_t bytes_sent = send_message(&socket_file_descriptor,strlen(buffer),buffer);
         if (bytes_sent == CONNECTION_REFUSED){
+            // if client is closed abruptly, exit the
+            // user to clear their statuses
             if (server_connection_status == ONLINE){
                 server_side_user_exit(source);
             }
@@ -251,6 +297,11 @@ void* connection_handler(void* accept_fd){
         }
         if (bytes_sent == SEND_ERROR){
             perror("receive failed");
+            // if client is closed abruptly, exit the
+            // user to clear their statuses
+            if (server_connection_status == ONLINE){
+                server_side_user_exit(source);
+            }
             break;
         }
 
@@ -260,26 +311,37 @@ void* connection_handler(void* accept_fd){
     return NULL;
 }
 
+/*   verify login information
+     returns LIST_EMPTY if user_list is not initialized
+     returns USERNAME_ERROR if user does not exist
+     returns PASSWORD_ERROR if password does not match.
+     returns ALREADY_LOGIN if user is already logged in.
+     returns SUCCESS_LOGIN if login is successful*/
 int verify_login(unsigned char * username, unsigned char * password){
     if (user_list == NULL){
         fprintf(stderr, "Error: user_list is not initialized.\n");
         return LIST_EMPTY;
     }
-    user_t* user = user_list_find(user_list, username);
+    user_t* user = database_search_user(user_list, username);
     if (user == NULL){
         return USERNAME_ERROR;
     }
     if (strcmp((char*)user->password, (char*)password) == 0){
         if (user->status == ONLINE)
             return ALREADY_LOGIN;
+        else
+            return PASSWORD_ERROR;
         return SUCCESS_LOGIN;
     }
 
     return SUCCESS_LOGIN;
 }
 
+/* exit a user by clearing their statuses
+ * this is part of logging out user. the
+ * reset is done in the handler function*/
 void server_side_user_exit(char * username){
-    user_t* user = user_list_find(user_list, (unsigned char*)username);
+    user_t* user = database_search_user(user_list, (unsigned char*)username);
     if (user == NULL){
         fprintf(stderr, "Error: user is NULL.\n");
         return;
@@ -301,7 +363,7 @@ void server_side_user_exit(char * username){
 
 void server_side_session_create(char * username, char * session_id){
     pthread_mutex_lock(&user_list_mutex);
-    user_t* user = user_list_find(user_list, (unsigned char*)username);
+    user_t* user = database_search_user(user_list, (unsigned char*)username);
     if (user == NULL){
         fprintf(stderr, "Error: user is NULL.\n");
         pthread_mutex_unlock(&user_list_mutex);
@@ -309,7 +371,7 @@ void server_side_session_create(char * username, char * session_id){
     }
     message_t reply_message;
     char buffer[maximum_buffer_size];
-    int count = user_list_count_by_session_id(user_list, session_id, &rw_mutex);
+    int count = get_user_count_in_a_session(user_list, session_id, &rw_mutex);
 
     if(user->in_session == ONLINE){
         fill_message(&reply_message, JN_NAK,
@@ -345,9 +407,14 @@ void server_side_session_create(char * username, char * session_id){
     pthread_mutex_unlock(&user_list_mutex);
 }
 
+/* joins a user to a specific session
+ * if a user is in a session, the
+ * session doesn't exist or the session
+ * is at its full cpacity, reply JN_NAK
+ * returns a JN_ACK if passing all cases*/
 void server_side_session_join(char * username, char * session_id){
     pthread_mutex_lock(&user_list_mutex);
-    user_t* user = user_list_find(user_list, (unsigned char*)username);
+    user_t* user = database_search_user(user_list, (unsigned char*)username);
     if (user == NULL){
         fprintf(stderr, "Error: user is NULL.\n");
         pthread_mutex_unlock(&user_list_mutex);
@@ -356,7 +423,7 @@ void server_side_session_join(char * username, char * session_id){
     message_t reply_message;
     char buffer[maximum_buffer_size];
 
-    int session_user_count = user_list_count_by_session_id(user_list, session_id, &rw_mutex);
+    int session_user_count = get_user_count_in_a_session(user_list, session_id, &rw_mutex);
 
     if (user->in_session == ONLINE){
         printf("user %s is already in a session.\n", user->username);
@@ -391,9 +458,13 @@ void server_side_session_join(char * username, char * session_id){
     pthread_mutex_unlock(&user_list_mutex);
 }
 
+/* removes a user from a session
+ * if a user is not in a session, the
+ * session doesn't exist, we just return
+ * otherwise remove the user*/
 void server_side_session_leave(char *username){
     pthread_mutex_lock(&user_list_mutex);
-    user_t* user = user_list_find(user_list, (unsigned char*)username);
+    user_t* user = database_search_user(user_list, (unsigned char*)username);
     if (user == NULL){
         fprintf(stderr, "Error: user is NULL.\n");
         return;
@@ -406,6 +477,8 @@ void server_side_session_leave(char *username){
 }
 
 
+/* returns a string based on the index
+ * of the login error code*/
 char* select_login_message(int index){
     if(index == USERNAME_ERROR)
         return "Your username does not appear to be valid.";
@@ -419,9 +492,12 @@ char* select_login_message(int index){
         return NULL;
 }
 
+/* logs in a user by setting their status to online
+ * and their socket file descriptor to the current
+ * socket file descriptor*/
 void user_login(char * username, unsigned char status, const int* socket_fd){
     pthread_mutex_lock(&user_list_mutex);
-    user_t* user = user_list_find(user_list, (unsigned char*)username);
+    user_t* user = database_search_user(user_list, (unsigned char*)username);
     if (user == NULL){
         fprintf(stderr, "Error: user is NULL.\n");
         return;
@@ -433,9 +509,11 @@ void user_login(char * username, unsigned char status, const int* socket_fd){
     strcpy(user->ip_address, IP_ADDR_BUFFER);
     free(IP_ADDR_BUFFER);
     pthread_mutex_unlock(&user_list_mutex);
-    user_list_print(user_list);
+    print_all_users_in_a_database(user_list);
 }
 
+/* returns a string based on the index
+ * of the session error code*/
 char* session_response_message(int value){
     switch (value) {
         case SESSION_NAME_RESERVED:
@@ -465,6 +543,10 @@ char* session_response_message(int value){
     }
 }
 
+/* sends a message to all users in a session
+ * by iterating through the user list and
+ * checking if the user is in the session
+ * and if the user is online*/
 void send_message_in_a_session(message_t * msg, char * session_id ){
     pthread_mutex_lock(&user_list_mutex);
     char buffer [ACC_BUFFER_SIZE];
@@ -481,7 +563,9 @@ void send_message_in_a_session(message_t * msg, char * session_id ){
     pthread_mutex_unlock(&user_list_mutex);
 }
 
-
+/* sets up the database by reading and normalizing
+ * the read line buffer and setting user info based off
+ * normalized strings*/
 int set_up_database(){
     fprintf(stdout, "Setting up database...\n");
     FILE *file_pointer;
@@ -505,11 +589,14 @@ int set_up_database(){
         new_user.port = OFFLINE;
         strcpy((char*)new_user.session_id, NOT_IN_SESSION);
         memset((char*)new_user.ip_address, 0, sizeof(new_user.ip_address));
-        user_list_add_user(user_list, &new_user, &rw_mutex);
+        user_database_add_user(user_list, &new_user, &rw_mutex);
     }
     return 1;
 }
 
+/* returns the ip address of a user
+ * by using getpeername, setting the
+ * port along the way*/
 char* get_user_ip_address_and_port(const int * socket_fd,  unsigned int * port){
     int socket = *socket_fd;
     struct sockaddr_storage user_addr;
@@ -539,6 +626,9 @@ char* get_user_ip_address_and_port(const int * socket_fd,  unsigned int * port){
     return ip_address_buffer;
 }
 
+/*   register a new user
+     returns error code if the database is full
+     or the username alreay exists*/
 int user_registration(char * username, char * password, const int  *socket_fd){
     pthread_mutex_lock(&user_list_mutex);
     user_t new_user = {0};
@@ -555,18 +645,19 @@ int user_registration(char * username, char * password, const int  *socket_fd){
     ip_address = get_user_ip_address_and_port(&new_user.socket_fd, &new_user.port);
     strcpy(new_user.ip_address, ip_address);
     free(ip_address);
-    int code = user_list_add_user(user_list, &new_user, &rw_mutex);
+    int code = user_database_add_user(user_list, &new_user, &rw_mutex);
     if (code == USER_ALREADY_EXIST || code == USER_LIST_FULL){
         pthread_mutex_unlock(&user_list_mutex);
         return code;
     }
-    user_list_print(user_list);
-    write_to_file(user_list_count(user_list,&rw_mutex) - 1);
+    print_all_users_in_a_database(user_list);
+    wrtie_to_database(get_user_count_in_database(user_list,&rw_mutex) - 1);
     pthread_mutex_unlock(&user_list_mutex);
     return code;
 }
 
-void write_to_file(int user_index){
+/* writes a new user to the database file*/
+void wrtie_to_database(int user_index){
     FILE * fp;
     fp = fopen(database_path, "a");
     if (fp == NULL){
@@ -577,6 +668,8 @@ void write_to_file(int user_index){
     fclose(fp);
 }
 
+/* returns a string based on the index
+ * of the registration error code*/
 char* user_registration_message(int value){
     switch (value) {
         case USER_ALREADY_EXIST:
@@ -588,10 +681,13 @@ char* user_registration_message(int value){
     }
 }
 
+/* kick a user from a session, sends a message
+ * to the user based on the response code from
+ * the database lookup*/
 void server_side_kick_user(char* sender, char* target){
     pthread_mutex_lock(&user_list_mutex);
-    user_t* target_user = user_list_find(user_list, (unsigned char*)target);
-    user_t* sender_user = user_list_find(user_list, (unsigned char*)sender);
+    user_t* target_user = database_search_user(user_list, (unsigned char*)target);
+    user_t* sender_user = database_search_user(user_list, (unsigned char*)sender);
 
     message_t reply_message = {0};
     char buffer[maximum_buffer_size] = {0};
@@ -663,10 +759,13 @@ void server_side_kick_user(char* sender, char* target){
     pthread_mutex_unlock(&user_list_mutex);
 }
 
+/* promote a user to be the owner of a session, sends a message
+ * to the user based on the response code from
+ * the database lookup*/
 void server_side_promote_user(char* sender, char* target){
     pthread_mutex_lock(&user_list_mutex);
-    user_t* target_user = user_list_find(user_list, (unsigned char*)target);
-    user_t* sender_user = user_list_find(user_list, (unsigned char*)sender);
+    user_t* target_user = database_search_user(user_list, (unsigned char*)target);
+    user_t* sender_user = database_search_user(user_list, (unsigned char*)sender);
 
     message_t reply_message = {0};
     char buffer[maximum_buffer_size] = {0};

@@ -56,20 +56,20 @@ user_database{
 };
 
 
-user_database* user_list_init();
+user_database* user_database_init();
 int create_user(user_t * user, user_t * user_to_add);
-int user_list_add_user(user_database * list, user_t * user_data, pthread_mutex_t * mutex);
-void user_list_remove_by_name(user_database * list, char * name, pthread_mutex_t * mutex);
-void user_list_remove_all(user_database * list, pthread_mutex_t * mutex);
-void user_list_print(user_database * list);
-void active_user_list_print(user_database * list);
-int get_active_user_list_by_session(user_database* list,
+int user_database_add_user(user_database * list, user_t * user_data, pthread_mutex_t * mutex);
+void remove_user_by_name_in_database(user_database * list, char * name, pthread_mutex_t * mutex);
+void remove_all_users_in_database(user_database * list, pthread_mutex_t * mutex);
+void print_all_users_in_a_database(user_database * list);
+void print_active_users_in_a_database(user_database * list);
+int get_active_user_list_in_a_session(user_database* list,
                                      char * active_user_list, char * session_id,
                                      pthread_mutex_t *mutex);
-void get_active_user_list(user_database* list, char * active_user_list,  pthread_mutex_t *mutex);
-user_t * user_list_find(user_database* list, unsigned char * username);
-int user_list_count(user_database* list, pthread_mutex_t * mutex);
-int user_list_count_by_session_id(user_database* list, char * session_id, pthread_mutex_t * mutex);
+void get_active_user_list_in_database(user_database* list, char * active_user_list,  pthread_mutex_t *mutex);
+user_t * database_search_user(user_database* list, unsigned char * username);
+int get_user_count_in_database(user_database* list, pthread_mutex_t * mutex);
+int get_user_count_in_a_session(user_database* list, char * session_id, pthread_mutex_t * mutex);
 user_t* return_user_by_username(user_database* list, unsigned char * username);
 void user_exit_current_session(user_database* list, char * username, pthread_mutex_t * mutex);
 
