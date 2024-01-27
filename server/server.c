@@ -20,7 +20,7 @@ int thread_count = 0;
 int terminate = 0;
 
 void KILL_HANDLER(int sig){
-    fprintf(stderr,"\nCaught signal. Exiting Program Gracefully! \n");
+    fprintf(stderr,"\nCaught signal. Exiting Program Gracefully!\n");
     terminate = 1;
     for (int i = 0; i < thread_count; i++){
         pthread_join(thread_pool[i], NULL);

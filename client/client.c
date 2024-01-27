@@ -15,14 +15,30 @@
 
 //flags to indicate the statuses of the client
 //and the server connection
+int socket_file_dscriptor = -1;
+char name[MAX_NAME];
 int server_connection_status = OFFLINE;
 int verified_access = OFF;
 int session_status = OFFLINE;
 int role = USER;
 int termination_signal = OFF;
-char name[MAX_NAME];
 pthread_t thread[thread_number];
 int thread_count = 0;
+char * line_buffer = NULL;
+
+
+void sig_kill_handler(int sig){
+    if (server_connection_status == ON){
+        logout(&socket_file_dscriptor);
+    }
+    termination_signal = ON;
+    for (int i = 0; i < thread_count; ++i) {
+        pthread_join(thread[i], NULL);
+    }
+    if (line_buffer != NULL) free(line_buffer);
+    fprintf(stdout, "\ncaught a kill signal. program exiting with reouseces released\n");
+    exit(0);
+}
 
 /*handle messages from the server in a thread*/
 /*all server messages are handled here*/
@@ -80,7 +96,7 @@ void* server_message_handler(void* socket_fd){
             fprintf(stdout, "%s: %s\n", (char *)message.source, (char *)message.data);
             continue;
         }
-        // to separate displayable messages data from commands  
+        // to separate displayable messages data from commands
         fprintf(stdout, "===============================\n");
         // access verified
         if (message.type == LO_ACK){
@@ -193,11 +209,11 @@ int main(){
     // initialize variables for reading and storing user inputs
     // and setting up the connection
     fprintf(stdout, "Welcome to the TCL!\n");
-    char * line_buffer = NULL;
     size_t line_buffer_size;
     ssize_t bytes_read;
     char input[login_parameter_size][50];
-    int socket_fd;
+
+    signal(SIGINT, sig_kill_handler);
 
     // keep getting input from the user in terminal
     // until the user quits the program in some way
@@ -206,7 +222,7 @@ int main(){
         // release all thread resources and get ready to
         // exit the program
         if (thread_count == (thread_number)) {
-            terminate_program(&socket_fd);
+            terminate_program(&socket_file_dscriptor);
             break;
         }
         // memset zero command buffers to prevent garbage values
@@ -259,7 +275,7 @@ int main(){
         if (code == quit_command) {
             // check if the exact number of parameters are provided
             if (!parameter_count_validate(index, quit_parameter_size)) continue;
-            terminate_program(&socket_fd);
+            terminate_program(&socket_file_dscriptor);
             break;
         }
         // login to the server
@@ -273,8 +289,8 @@ int main(){
                     fprintf(stderr, "You are already logged in\n");
                     continue;
                 }
-                // check if the user is trying to log in to a different account
-                // while already logged in
+                    // check if the user is trying to log in to a different account
+                    // while already logged in
                 else
                     fprintf(stderr, "You cannot login to another account while staying connected\n");
                 continue;
@@ -284,7 +300,7 @@ int main(){
             char * password = input[2];
             char * ip_address = input[3];
             char * port = input[4];
-            login(&socket_fd, ip_address, port, username, password, &thread[thread_count]);
+            login(&socket_file_dscriptor, ip_address, port, username, password);
             thread_count++;
             continue;
         }
@@ -304,7 +320,7 @@ int main(){
             char * password = input[2];
             char * ip_address = input[3];
             char * port = input[4];
-            user_registration(&socket_fd, ip_address, port, username, password, &thread[thread_count]);
+            user_registration(&socket_file_dscriptor, ip_address, port, username, password);
             thread_count++;
             continue;
         }
@@ -324,20 +340,20 @@ int main(){
             message_t message;
             fill_message(&message, MESSAGE, bytes_read, name, line_buffer);
             message_to_string(&message,message.size, sending_buffer);
-            send_message(&socket_fd, strlen(sending_buffer), sending_buffer);
+            send_message(&socket_file_dscriptor, strlen(sending_buffer), sending_buffer);
             continue;
         }
 
         // logout from the server
         if (code == logout_command) {
             if (!parameter_count_validate(index, logout_parameter_size)) continue;
-            logout(&socket_fd);
+            logout(&socket_file_dscriptor);
             continue;
         }
         // list all online usernames and their sessions
         if (code == list_command) {
             if (!parameter_count_validate(index, list_parameter_size)) continue;
-            list(&socket_fd);
+            list(&socket_file_dscriptor);
             continue;
         }
         // list users, their session_ids and their roles
@@ -345,7 +361,7 @@ int main(){
         // given session_id
         if (code == userlist_command) {
             if (!parameter_count_validate(index, userlist_parameter_size)) continue;
-            user_list(&socket_fd, input[1]);
+            user_list(&socket_file_dscriptor, input[1]);
             continue;
         }
         // join a session
@@ -354,7 +370,7 @@ int main(){
             // check if the session_id is too long
             if (!length_validate((int)strlen(input[1]), MAX_SESSION_LENGTH)) continue;
             char * session_id = input[1];
-            join_session(&socket_fd, session_id);
+            join_session(&socket_file_dscriptor, session_id);
             continue;
         }
         // create a new session
@@ -362,13 +378,13 @@ int main(){
             if (!parameter_count_validate(index, create_session_parameter_size)) continue;
             if (!length_validate((int)strlen(input[1]), MAX_SESSION_LENGTH)) continue;
             char * session_id = input[1];
-            create_session(&socket_fd, session_id);
+            create_session(&socket_file_dscriptor, session_id);
             continue;
         }
         // leave a session
         if (code == leave_session_command) {
             if (!parameter_count_validate(index, leave_session_parameter_size)) continue;
-            leave_session(&socket_fd);
+            leave_session(&socket_file_dscriptor);
             continue;
         }
         /* all actions in this if branch require the user
@@ -395,7 +411,7 @@ int main(){
                 continue;
             }
             char * username = input[1];
-            promote(&socket_fd, username);
+            promote(&socket_file_dscriptor, username);
         }
 
         // kick a user from the session that the admin is in
@@ -407,16 +423,17 @@ int main(){
                 continue;
             }
             char * username = input[1];
-            kick(&socket_fd, username);
+            kick(&socket_file_dscriptor, username);
         }
     }
     free(line_buffer);
+    line_buffer = NULL;
     return 0;
 }
 
 /* Validate inputs, set up the socket, connect
  and send a login request to the server*/
-void login(int * socket_fd, char * ip_address, char * port, char * username, char * password, pthread_t* thread){
+void login(int * socket_fd, char * ip_address, char * port, char * username, char * password){
     /* validate the lengths of username and password*/
     if (!length_validate((int)strlen(username), MAX_NAME)){
         fprintf(stderr, "Username needs to be under length of %d\n", MAX_NAME);
@@ -447,7 +464,7 @@ void login(int * socket_fd, char * ip_address, char * port, char * username, cha
     // loop through all the results and connect to the first we can
     for(p = servinfo; p != NULL; p = p->ai_next) {
         if ((*socket_fd = socket(p->ai_family, p->ai_socktype,
-                p->ai_protocol)) == -1) {
+                                 p->ai_protocol)) == -1) {
             perror("client: socket");
             continue;
         }
@@ -469,17 +486,16 @@ void login(int * socket_fd, char * ip_address, char * port, char * username, cha
     // connection established
     set_server_connection_status(ON);
     // create a thread to handle server messages
-    pthread_create(&(*thread), NULL, &server_message_handler, &(*socket_fd));
+    pthread_create(&thread[thread_count], NULL, &server_message_handler, &(*socket_fd));
     // prepare and send login message
     fill_and_send_message(socket_fd, LOGIN, username, password);
     freeaddrinfo(servinfo); // all done with this structure
-
 }
 
 /* Validate inputs, set up the socket, connect to the server
  and send a registration request to the server
  it works like the login function... no further comments*/
-void user_registration(int * socket_fd, char * ip_address, char * port, char * username, char * password, pthread_t* thread){
+void user_registration(int * socket_fd, char * ip_address, char * port, char * username, char * password){
     if (!length_validate((int)strlen(username), MAX_NAME)){
         fprintf(stderr, "Username needs to be under length of %d\n", MAX_NAME);
         return;
@@ -509,7 +525,7 @@ void user_registration(int * socket_fd, char * ip_address, char * port, char * u
     // loop through all the results and connect to the first we can
     for(p = servinfo; p != NULL; p = p->ai_next) {
         if ((*socket_fd = socket(p->ai_family, p->ai_socktype,
-                p->ai_protocol)) == -1) {
+                                 p->ai_protocol)) == -1) {
             perror("client: socket");
             continue;
         }
@@ -529,7 +545,7 @@ void user_registration(int * socket_fd, char * ip_address, char * port, char * u
     // end of citation
 
     set_server_connection_status(ON);
-    pthread_create(&(*thread), NULL, &server_message_handler, &(*socket_fd));
+    pthread_create(&thread[thread_count], NULL, &server_message_handler, &(*socket_fd));
     //send login message
     fill_and_send_message(socket_fd, CREATE, username, password);
 

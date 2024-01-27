@@ -1,6 +1,7 @@
 #ifndef CLIENT_H
 #define CLIENT_H
 #include "../message/message.h"
+#include <signal.h>
 
 //command types
 #define invalid_command (-1)
@@ -42,8 +43,8 @@
 #define OFF 0
 #define ON 1
 
-void login(int * socket_fd, char * ip_address, char * port, char * username, char * password, pthread_t* thread);
-void user_registration(int * socket_fd, char * ip_address, char * port, char * username, char * password, pthread_t* thread);
+void login(int * socket_fd, char * ip_address, char * port, char * username, char * password);
+void user_registration(int * socket_fd, char * ip_address, char * port, char * username, char * password);
 void logout(int * socket_fd);
 void join_session(int * socket_fd, char * session_id);
 void leave_session(int * socket_fd);
