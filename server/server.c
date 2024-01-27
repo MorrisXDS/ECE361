@@ -545,6 +545,7 @@ int set_up_database(){
         memset((char*)new_user.ip_address, 0, sizeof(new_user.ip_address));
         user_database_add_user(user_list, &new_user, &rw_mutex);
     }
+    fclose(file_pointer);
     return 1;
 }
 
