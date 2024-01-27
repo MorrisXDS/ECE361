@@ -196,7 +196,7 @@ int main(){
     char * line_buffer = NULL;
     size_t line_buffer_size;
     ssize_t bytes_read;
-    char input[login_parameter_size][20];
+    char input[login_parameter_size][50];
     int socket_fd;
 
     // keep getting input from the user in terminal
@@ -410,6 +410,7 @@ int main(){
             kick(&socket_fd, username);
         }
     }
+    free(line_buffer);
     return 0;
 }
 
