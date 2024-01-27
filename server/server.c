@@ -15,6 +15,20 @@
 user_database* user_list;
 pthread_mutex_t rw_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t user_list_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_t thread_pool[THREAD_CAPACITY];
+int thread_count = 0;
+int terminate = 0;
+
+void KILL_HANDLER(int sig){
+    fprintf(stderr,"\nCaught signal. Exiting Program Gracefully! \n");
+    terminate = 1;
+    for (int i = 0; i < thread_count; i++){
+        pthread_join(thread_pool[i], NULL);
+    }
+    if (user_list != NULL)
+        remove_all_users_in_database(user_list, &user_list_mutex);
+    exit(0);
+}
 
 
 int main(int argc, char* argv[]){
@@ -22,6 +36,7 @@ int main(int argc, char* argv[]){
         fprintf(stderr, "Usage: server <port>\n");
         exit(1);
     }
+    signal(SIGINT, KILL_HANDLER);
     //cited from Page 21 and Page 28, Beej's Guide to Network Programming, with modifications
     int status;
     struct sockaddr_storage their_addr;
@@ -39,7 +54,7 @@ int main(int argc, char* argv[]){
         freeaddrinfo(servinfo); // free the linked-list
         exit(1);
     }
-    printf("getaddrinfo success\n");
+    fprintf(stdout,"getaddrinfo success\n");
 
     int listen_fd;
 
@@ -73,7 +88,7 @@ int main(int argc, char* argv[]){
         fprintf(stderr, "client: failed to connect\n");
         exit(2);
     }
-    printf("bind success\n");
+    fprintf(stdout,"bind success\n");
 
     user_list = user_database_init();
     if (user_list == NULL){
@@ -91,16 +106,14 @@ int main(int argc, char* argv[]){
         perror("listen");
         exit(errno);
     }
-    printf("listen success\n");
-    pthread_t thread_pool[THREAD_CAPACITY];
-    int thread_count = 0;
+    fprintf(stdout,"listen success\n");
 
     while (1) {
         // check if thread pool is full
         // if full, wait for all threads to finish before exiting
         // and clean up their resources
-        if (thread_count == THREAD_CAPACITY) {
-            printf("thread pool full\n");
+        if (thread_count == THREAD_CAPACITY ) {
+            fprintf(stderr,"thread pool full\n");
             for (int i = 0; i < thread_count; i++){
                 pthread_join(thread_pool[i], NULL);
             }
@@ -137,7 +150,10 @@ void* connection_handler(void* accept_fd){
     char server_connection_status = OFFLINE;
 
     while(1){
+        // caught a sig kill, exit the thread
+        if (terminate == 1) break;
         // memset to avoid garbage values
+
         memset(buffer, 0, sizeof(buffer));
         memset(&received_message, 0, sizeof(received_message));
         memset(&reply_message, 0, sizeof(reply_message));
@@ -146,14 +162,14 @@ void* connection_handler(void* accept_fd){
 
         if (bytes_received == CONNECTION_REFUSED){
             if (server_connection_status == ONLINE){
-                printf("user %s disconnected\n", source);
+                fprintf(stderr,"user %s disconnected\n", source);
                 server_side_user_exit(source);
             }
             break;
         }
         if (bytes_received == RECEIVE_ERROR){
             if (server_connection_status == ONLINE){
-                printf("came across abnormality\n");
+                fprintf(stderr,"came across abnormality\n");
                 server_side_user_exit(source);
             }
             perror("receive failed");
@@ -253,8 +269,8 @@ void* connection_handler(void* accept_fd){
                                                          (char*)received_message.data, &rw_mutex);
             if (code == SESSION_NAME_INVALID)
                 fill_and_send_message(&socket_file_descriptor,
-                                  SQ_NAK, (char *)received_message.source,
-                                  session_response_message(code));
+                                      SQ_NAK, (char *)received_message.source,
+                                      session_response_message(code));
             else
                 fill_and_send_message(&socket_file_descriptor,
                                       SQ_ACK, (char *)received_message.source,
@@ -308,7 +324,6 @@ void* connection_handler(void* accept_fd){
 
     }
     close(socket_file_descriptor);
-    fprintf(stdout, "thread exited\n");
     return NULL;
 }
 
@@ -342,7 +357,7 @@ int verify_login(unsigned char * username, unsigned char * password){
 void server_side_user_exit(char * username){
     user_t* user = database_search_user(user_list, (unsigned char*)username);
     fprintf(stdout,"============================\n");
-    printf("user %s is exiting.\n", user->username);
+    fprintf(stdout,"user %s is exiting.\n", user->username);
     if (user->in_session == ONLINE){
         server_side_session_leave(username);
     }
@@ -392,17 +407,17 @@ void server_side_session_join(char * username, char * session_id){
     int session_user_count = get_user_count_in_a_session(user_list, session_id, &rw_mutex);
 
     if (user->in_session == ONLINE){
-        printf("user %s is already in a session.\n", user->username);
+        fprintf(stderr,"user %s is already in a session.\n", user->username);
         fill_and_send_message(&user->socket_fd, JN_NAK,username,
                               session_response_message(USER_NAME_IN_SESSION));
     }
     else if (session_user_count == 0){
-        printf("session %s does not exist.\n", session_id);
+        fprintf(stderr,"session %s does not exist.\n", session_id);
         fill_and_send_message(&user->socket_fd, JN_NAK,username,
                               session_response_message(SESSION_NAME_INVALID));
     }
     else if (session_user_count == MAX_SESSION_USER){
-        printf("session %s is full!\n", session_id);
+        fprintf(stderr,"session %s is full!\n", session_id);
         fill_and_send_message(&user->socket_fd, JN_NAK,username,
                               session_response_message(SESSION_AT_FULL_CAPACITY));
     }
@@ -410,10 +425,10 @@ void server_side_session_join(char * username, char * session_id){
         memset((char*)user->session_id, 0, sizeof(user->session_id));
         strcpy((char*)user->session_id, session_id);
         user->in_session = ONLINE;
-        printf("user %s joined session %s.\n", user->username, user->session_id);
+        fprintf(stdout,"user %s joined session %s.\n", user->username, user->session_id);
         fill_and_send_message(&user->socket_fd, JN_ACK,username, session_id);
     }
-    
+
     pthread_mutex_unlock(&user_list_mutex);
 }
 
@@ -571,7 +586,7 @@ char* get_user_ip_address_and_port(const int * socket_fd,  unsigned int * port){
             inet_ntop(AF_INET6, &(ipv6->sin6_addr), ip_address_buffer, INET6_ADDRSTRLEN);
             *port = ntohs(ipv6->sin6_port);
         } else {
-            printf("Unknown address family\n");
+            fprintf(stderr,"Unknown address family\n");
         }
     }
     else{
