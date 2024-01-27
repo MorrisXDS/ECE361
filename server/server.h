@@ -1,6 +1,7 @@
 #ifndef SERVER_H
 #define SERVER_H
 #include "user.h"
+#include <signal.h>
 
 //TYPES
 #define SUCCESS_LOGIN 3
