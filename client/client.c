@@ -21,6 +21,8 @@ int session_status = OFFLINE;
 int role = USER;
 int termination_signal = OFF;
 char name[MAX_NAME];
+pthread_t thread[thread_number];
+int thread_count = 0;
 
 /*handle messages from the server in a thread*/
 /*all server messages are handled here*/
@@ -196,8 +198,6 @@ int main(){
     ssize_t bytes_read;
     char input[login_parameter_size][20];
     int socket_fd;
-    pthread_t thread[thread_number];
-    int thread_count = 0;
 
     // keep getting input from the user in terminal
     // until the user quits the program in some way
@@ -206,11 +206,8 @@ int main(){
         // release all thread resources and get ready to
         // exit the program
         if (thread_count == (thread_number)) {
-            for (int i = 0; i < thread_count; ++i) {
-                pthread_join(thread[i], NULL);
-            }
-            fprintf(stderr, "Login Attempts used up Please restart the program if you would like to try again.\n");
-            return 0;
+            terminate_program(&socket_fd);
+            break;
         }
         // memset zero command buffers to prevent garbage values
         for (int i = 0; i < login_parameter_size; ++i) {
@@ -622,6 +619,9 @@ void terminate_program(int * socket_fd){
         logout(socket_fd);
     }
     termination_signal = ON;
+    for (int i = 0; i < thread_count; ++i) {
+        pthread_join(thread[i], NULL);
+    }
 }
 
 /* send a request to the server to promote a user
