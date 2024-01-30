@@ -15,11 +15,12 @@
 // This server is based on the assumption that the local address 
 // will always be IPv4
 int main(int argc, char* argv[]){
-    // cited from page 38 "Beej's Guide to Network Programming", modified
     if(argc != 2){
 		fprintf(stdout, "usage: server <port>\n");
 		exit(3);
 	}
+
+    // cited from page 38 "Beej's Guide to Network Programming", modified
     struct addrinfo hints, *servinfo, *p; int rv;
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_INET; // IPv4
@@ -58,7 +59,7 @@ int main(int argc, char* argv[]){
         exit(errno);
     }
 
-    //ending the buffer with null terminator
+    // endi the buffer with null terminator
     recipient_buffer[number_bytes] = '\0';
 
     // reply to the client based on whats come in
