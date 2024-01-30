@@ -52,7 +52,8 @@ int main(int argc, char* argv[]){
 	fclose(transfer_file);
 
 	// cited from page 38 "Beej's Guide to Network Programming", modified
-    struct addrinfo hints, *servinfo, *p; int rv;
+    struct addrinfo hints, *servinfo, *p; 
+	int rv;
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_INET; // IPv4
     hints.ai_socktype = SOCK_DGRAM;

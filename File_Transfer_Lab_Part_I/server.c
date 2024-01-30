@@ -51,31 +51,34 @@ int main(int argc, char* argv[]){
 
     from_size = sizeof (from_addr);
 
-    printf("server starts receiving ...\n");
-    int number_bytes = recvfrom(socketfd,recipient_buffer, null_padded_max_len, 0, &from_addr, &from_size);
-    
-    if (number_bytes == -1){
-        printf("Error: failed to receive!\n");
-        exit(errno);
+    while(1){
+        printf("server starts receiving ...\n");
+        int number_bytes = recvfrom(socketfd,recipient_buffer, null_padded_max_len, 0, &from_addr, &from_size);
+        
+        if (number_bytes == -1){
+            printf("Error: failed to receive!\n");
+            exit(errno);
+        }
+
+        // reply to the client based on whats come in
+        if(strcmp(recipient_buffer, "ftp") == 0){
+            number_bytes = sendto(socketfd,"yes", sizeof("yes"), 0, &from_addr, from_size);
+            if (number_bytes == -1){
+                printf("Error: failed to send!\n");
+                exit(errno);
+            }
+            printf("server replied with yes!\n");
+        }
+        else{
+            number_bytes = sendto(socketfd,"no", sizeof("no"), 0, &from_addr, from_size);
+            if (number_bytes == -1){
+                printf("Error: failed to send!\n");
+                exit(errno);
+            }
+            printf("server replied with no!\n");
+        }
     }
 
-    // reply to the client based on whats come in
-    if(strcmp(recipient_buffer, "ftp") == 0){
-        number_bytes = sendto(socketfd,"yes", sizeof("yes"), 0, &from_addr, from_size);
-        if (number_bytes == -1){
-            printf("Error: failed to send!\n");
-            exit(errno);
-        }
-        printf("server replied with yes!\n");
-    }
-    else{
-        number_bytes = sendto(socketfd,"no", sizeof("no"), 0, &from_addr, from_size);
-        if (number_bytes == -1){
-            printf("Error: failed to send!\n");
-            exit(errno);
-        }
-        printf("server replied with no!\n");
-    }
     
     return 0;
 }
