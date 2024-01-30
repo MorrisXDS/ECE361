@@ -29,16 +29,15 @@ int main(int argc, char* argv[]){
 
 	// check if the format is correct
 	int input_buffer;
-
 	input_buffer = getchar();
 
-    if (input_buffer != 10 && input_buffer != EOF){
-		printf("1:Incorrect format. Please restart the client host!\n");
+    if (input_buffer != '\n' && input_buffer != EOF){
+		printf("Incorrect format. Please restart the client host!\n");
 		exit(1);
 	}
 
 	if(strcmp(ftp,"ftp") != 0) {
-		printf("2:Incorrect format. Please restart the client host!\n");
+		printf("Incorrect format. Please restart the client host!\n");
 		exit(1);
 	}
 
