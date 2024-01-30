@@ -59,9 +59,6 @@ int main(int argc, char* argv[]){
         exit(errno);
     }
 
-    // end the buffer with null terminator
-    recipient_buffer[number_bytes] = '\0';
-
     // reply to the client based on whats come in
     if(strcmp(recipient_buffer, "ftp") == 0){
         number_bytes = sendto(socketfd,"yes", sizeof("yes"), 0, &from_addr, from_size);
