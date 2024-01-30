@@ -59,7 +59,7 @@ int main(int argc, char* argv[]){
         exit(errno);
     }
 
-    // endi the buffer with null terminator
+    // end the buffer with null terminator
     recipient_buffer[number_bytes] = '\0';
 
     // reply to the client based on whats come in
