@@ -89,7 +89,6 @@ int main(int argc, char* argv[]){
         exit(errno);
     }
 
-	recipient_buffer[number_bytes] = '\n';
 	printf("recvied \"%s\"\n", recipient_buffer);
 	
 	if(strcmp(recipient_buffer, "yes") != 0) {
