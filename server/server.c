@@ -383,6 +383,7 @@ void server_side_session_create(char * username, char * session_id){
         strcpy((char*)user->session_id, session_id);
         user->in_session = ONLINE;
         user->role = ADMIN;
+        fprintf(stdout, "session \"%s\" has just been created!\n", session_id);
         fill_and_send_message(&user->socket_fd, NS_ACK,username,
                               session_id);
     }
