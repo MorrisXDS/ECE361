@@ -119,7 +119,7 @@ int main(int argc, char* argv[]){
             }
             break;
         }
-        puts("accepting connections...");
+        puts("accepting connections for login/registration");
         int accept_fd = accept(listen_fd, (struct sockaddr *)&their_addr, &addr_size);
         if (accept_fd == -1) {
             if (errno == EWOULDBLOCK || errno == EAGAIN) {
