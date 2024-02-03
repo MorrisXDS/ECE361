@@ -1,4 +1,5 @@
 #include "../packets/packet.h"
+#include <time.h>
 
 #define max_len 256
 #define null_padded_max_len (max_len-1)
@@ -111,15 +112,21 @@ int main(int argc, char* argv[]){
             int data_size = convert_to_string(&sender, data, file_name);
             number_bytes = sendto(socketfd, data, data_size, 0,
                                   (struct sockaddr *)servinfo->ai_addr, sizeof(struct sockaddr));
+            clock_t start_time = clock();
+            
+
             if(number_bytes == -1)
                 break;
 
             number_bytes = recvfrom(socketfd, recipient_buffer, null_padded_max_len,
                                     0, (struct sockaddr *)servinfo->ai_addr, &from_size);
-
+            clock_t end_time = clock();
             if(number_bytes == -1)
                 break;
-
+            
+            
+            double time_taken = ((double)end_time - (double)start_time)/CLOCKS_PER_SEC;
+            printf("Round Trip Time is %d: %f\n", i+1, time_taken);
             recipient_buffer[number_bytes] = '\n';
             printf("the server replied: %s \n", recipient_buffer);
 
@@ -132,7 +139,6 @@ int main(int argc, char* argv[]){
         }
 
         char* goodbye_msg = malloc(sizeof(char)*max_len);
-
         number_bytes = recvfrom(socketfd, goodbye_msg, null_padded_max_len,
                                 0, (struct sockaddr *)servinfo->ai_addr, &from_size);
 
