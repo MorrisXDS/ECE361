@@ -39,86 +39,92 @@ int main(int argc, char* argv[]){
     socklen_t from_size;
     from_size = sizeof (from_addr);
 
-    struct packet receiver = {0};
+    while(1) {
+        struct packet receiver = {0};
+        printf("server starts receiving ...\n");
+        char buffer[sending_buffer_size];
+        ssize_t number_bytes = recvfrom(socketfd, buffer, sending_buffer_size, 0, &from_addr, &from_size);
 
-    printf("server starts receiving ...\n");
-
-    char buffer[sending_buffer_size];
-
-    ssize_t number_bytes = recvfrom(socketfd, buffer, sending_buffer_size, 0, &from_addr, &from_size);
-
-    if (number_bytes == -1) {
-        perror("Failed to receive!\n");
-        exit(errno);
-    }
-
-    char name[name_length];
-
-    buffer_to_packet(&receiver, buffer, name);
-
-    int fd = open(receiver.filename, O_CREAT | O_RDWR, S_IRWXU);
-
-    if (fd == -1){
-        perror("Failed to open the file");
-        perror(receiver.filename);
-        perror("\n");
-    }
-
-    ssize_t bytes_written;
-    total_frag = receiver.total_frag;
-
-    char messages[256];
-
-    sprintf(messages, "Received %d packets out of %d, waiting for %d more", 1, total_frag, total_frag-1);
-
-    number_bytes = sendto(socketfd, messages, strlen(messages)+1, 0, &from_addr, from_size);
-    if(number_bytes == -1){
-        perror("failed to reply!");
-        exit(errno);
-    }
-
-    bytes_written = write(fd, receiver.filedata, receiver.size);
-    if(bytes_written == -1){
-        perror("write failed!");
-        exit(errno);
-    }
-
-    char message[256];
-    for(int i = 1; i < total_frag; i++){
-        number_bytes = recvfrom(socketfd, buffer, sizeof(buffer), 0, &from_addr, &from_size);
-        if(number_bytes == -1){
-            perror("receipt failed!");
+        if (number_bytes == -1) {
+            perror("Failed to receive!\n");
             exit(errno);
         }
 
-        memset(messages, 0, sizeof(messages));
-        sprintf(message, "Received %d packets out of %d, waiting for %d more", i+1, total_frag, total_frag-i-1);
+        if (strcmp(buffer, "end") == 0) {
+            printf("user finished file transfer. Noe quitting\n");
+            break;
+        }
 
-        number_bytes = sendto(socketfd, message, strlen(message)+1, 0, &from_addr, from_size);
-        if(number_bytes == -1){
+        char name[name_length];
+
+        buffer_to_packet(&receiver, buffer, name);
+
+        int fd = open(receiver.filename, O_CREAT | O_RDWR, S_IRWXU);
+
+        if (fd == -1) {
+            perror("Failed to open the file");
+            perror(receiver.filename);
+            perror("\n");
+        }
+
+        ssize_t bytes_written;
+        total_frag = receiver.total_frag;
+
+        char messages[256];
+
+        sprintf(messages, "Received %d packets out of %d, waiting for %d more", 1, total_frag, total_frag - 1);
+
+        number_bytes = sendto(socketfd, messages, strlen(messages) + 1, 0, &from_addr, from_size);
+        if (number_bytes == -1) {
             perror("failed to reply!");
             exit(errno);
         }
 
-        buffer_to_packet(&receiver, buffer, name);
         bytes_written = write(fd, receiver.filedata, receiver.size);
-        if(bytes_written == -1){
+        if (bytes_written == -1) {
             perror("write failed!");
             exit(errno);
         }
+
+        char message[256];
+        for (int i = 1; i < total_frag; i++) {
+            number_bytes = recvfrom(socketfd, buffer, sizeof(buffer), 0, &from_addr, &from_size);
+            if (number_bytes == -1) {
+                perror("receipt failed!");
+                exit(errno);
+            }
+
+            memset(messages, 0, sizeof(messages));
+            sprintf(message, "Received %d packets out of %d, waiting for %d more", i + 1, total_frag,
+                    total_frag - i - 1);
+
+            number_bytes = sendto(socketfd, message, strlen(message) + 1, 0, &from_addr, from_size);
+            if (number_bytes == -1) {
+                perror("failed to reply!");
+                exit(errno);
+            }
+
+            buffer_to_packet(&receiver, buffer, name);
+            bytes_written = write(fd, receiver.filedata, receiver.size);
+            if (bytes_written == -1) {
+                perror("write failed!");
+                exit(errno);
+            }
+        }
+
+        char end_of_file[256];
+        sprintf(end_of_file, "End of File Transfer for %s.\n", name);
+
+        number_bytes = sendto(socketfd, end_of_file,
+                              strlen(end_of_file) + 1, 0, &from_addr, from_size);
+
+        if (number_bytes == -1) {
+            perror("failed to reply!");
+            exit(errno);
+        }
+        close(fd);
     }
 
-    char see_you[256] = "End of File Transfer. Thank you!\n";
-
-    number_bytes = sendto(socketfd, see_you,
-                          strlen(see_you)+1, 0, &from_addr, from_size);
-
-    if(number_bytes == -1){
-        perror("failed to reply!");
-        exit(errno);
-    }
-
-    close(fd);
     close(socketfd);
     freeaddrinfo(servinfo);
     return 0;
