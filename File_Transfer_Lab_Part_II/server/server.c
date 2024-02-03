@@ -56,8 +56,6 @@ int main(int argc, char* argv[]){
 
     buffer_to_packet(&receiver, buffer, name);
 
-    printf("filename is %s\n", receiver.filename);
-
     int fd = open(receiver.filename, O_CREAT | O_RDWR, S_IRWXU);
 
     if (fd == -1){
@@ -112,8 +110,8 @@ int main(int argc, char* argv[]){
 
     char see_you[256] = "End of File Transfer. Thank you!\n";
 
-    number_bytes = sendto(socketfd, see_you, 
-        strlen(see_you)+1, 0, &from_addr, from_size);
+    number_bytes = sendto(socketfd, see_you,
+                          strlen(see_you)+1, 0, &from_addr, from_size);
 
     if(number_bytes == -1){
         perror("failed to reply!");

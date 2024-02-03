@@ -64,6 +64,7 @@ void buffer_to_packet(struct packet* file_frag, char * data, char * name){
         count++;
         index++;
     }
+    name[index] = '\0';
     file_frag->filename = name;
     count++;
 
