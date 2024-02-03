@@ -34,7 +34,7 @@ void buffer_to_packet(struct packet* file_frag, char * data, char * name){
         count++;
         index++;
     }
-    content[index] = '\n';
+    content[index] = '\0';
     file_frag->total_frag = (unsigned int)atoi(content);
     count++;
 
@@ -44,7 +44,7 @@ void buffer_to_packet(struct packet* file_frag, char * data, char * name){
         count++;
         index++;
     }
-    content[index] = '\n';
+    content[index] = '\0';
     file_frag->frag_no = (unsigned int)atoi(content);
     count++;
 
@@ -54,7 +54,7 @@ void buffer_to_packet(struct packet* file_frag, char * data, char * name){
         count++;
         index++;
     }
-    content[index] = '\n';
+    content[index] = '\0';
     file_frag->size = (unsigned int)atoi(content);
     count++;
 

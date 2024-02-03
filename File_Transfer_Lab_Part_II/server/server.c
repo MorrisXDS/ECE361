@@ -7,7 +7,7 @@ unsigned int total_frag = 0;
 // will always be IPv4
 int main(int argc, char* argv[]){
     if (argc != 2){
-        printf("the number of parameters is wrong. Please check it!\n");
+        printf("usage: server <port number>\n");
         exit(1);
     }
 
@@ -41,8 +41,8 @@ int main(int argc, char* argv[]){
 
     while(1) {
         struct packet receiver = {0};
+        char buffer[sending_buffer_size] = {0};
         printf("server starts receiving ...\n");
-        char buffer[sending_buffer_size];
         ssize_t number_bytes = recvfrom(socketfd, buffer, sending_buffer_size, 0, &from_addr, &from_size);
 
         if (number_bytes == -1) {
@@ -50,12 +50,12 @@ int main(int argc, char* argv[]){
             exit(errno);
         }
 
-        if (strcmp(buffer, "end") == 0) {
+        if (strcmp(buffer, "done\n") == 0) {
             printf("user finished file transfer. Noe quitting\n");
             break;
         }
 
-        char name[name_length];
+        char name[name_length] = {0};
 
         buffer_to_packet(&receiver, buffer, name);
 
