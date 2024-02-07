@@ -140,6 +140,7 @@ void* server_message_handler(void* socket_fd){
         if (message.type == QU_ACK){
             fprintf(stdout, "%s", (char *)message.data);
         }
+        #ifdef ADDITIONAL_FEATURES
         // managed to create an account
         if (message.type == RG_ACK){
             strcpy(name, (char *)message.source);
@@ -196,6 +197,7 @@ void* server_message_handler(void* socket_fd){
         if (message.type == SQ_NAK){
             fprintf(stderr, "Failed to query the session.\n%s\n", (char *)message.data);
         }
+        #endif
         // to separate displayable messages data from commands
         fprintf(stdout, "===============================\n");
 
@@ -702,9 +704,11 @@ int check_commands(char* command){
     if (strcmp (command, "/leavesession") == 0) return leave_session_command;
     if (strcmp (command, "/createsession") == 0) return create_session_command;
     if (strcmp (command, "/list") == 0) return list_command;
+    #ifdef ADDITIONAL_FEATURES
     if (strcmp (command, "/create") == 0) return create_command;
     if (strcmp (command, "/kick") == 0) return kick_command;
     if (strcmp (command, "/promote") == 0) return promote_command;
     if (strcmp (command, "/userlist") == 0) return userlist_command;
+    #endif
     return invalid_command;
 }
