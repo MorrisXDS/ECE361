@@ -51,7 +51,7 @@ int main(int argc, char* argv[]){
         }
 
         if (strcmp(buffer, "done\n") == 0) {
-            printf("user finished file transfer. Noe quitting\n");
+            printf("user finished file transfer. Now quitting\n");
             break;
         }
 
