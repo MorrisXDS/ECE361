@@ -1,4 +1,5 @@
 #include "../packets/packet.h"
+#include "../packets/ack.h"
 #include <time.h>
 
 #define max_len 256
@@ -82,7 +83,7 @@ int main(int argc, char* argv[]){
         }
 
         ssize_t size = file_stats.st_size;
-        int total_frag = ceil((double)size/file_frag_size);
+        int total_frag = ceil((double) size/file_frag_size);
 
         ssize_t  number_bytes;
         char recipient_buffer[max_len];

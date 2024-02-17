@@ -1,4 +1,5 @@
 #include "../packets/packet.h"
+#include "../packets/ack.h"
 #include <time.h>
 
 unsigned int total_frag = 0;
@@ -40,35 +41,40 @@ int main(int argc, char* argv[]){
     socklen_t from_size;
     from_size = sizeof (from_addr);
     srand(time(NULL));
-    int rand_num = 0;
-
+    
     while(1) {
-        struct packet receiver = {0};
         char buffer[sending_buffer_size] = {0};
-        printf("server starts receiving ...\n");
         ssize_t number_bytes = recvfrom(socketfd, buffer, sending_buffer_size, 0, &from_addr, &from_size);
-        rand_num = (rand() % 100) +1;
-
-        if(rand_num > 5){
-            sprintf(messages, "Received %d packets out of %d, waiting for %d more", 1, total_frag, total_frag - 1);
-            number_bytes = sendto(socketfd, messages, strlen(messages) + 1, 0, &from_addr, from_size);
-        }
-        else{
-            
-        }
-
-
         if (number_bytes == -1) {
             perror("Failed to receive!\n");
             exit(errno);
+        }
+        char messages[256];
+        int rand_num = 0;
+        struct ack_packet response_packet = {0};
+        char name[name_length] = {0};
+        printf("server starts receiving ...\n");
+        struct packet receiver = {0};
+        rand_num = (rand() % 100) +1;
+
+        if(rand_num > 5){
+            fill_the_ack(&response_packet, total_frag, 1, recevd);
+            ack_to_buffer(&response_packet, messages);
+            number_bytes = sendto(socketfd, messages, strlen(messages) + 1, 0, &from_addr, from_size);
+            if (number_bytes == -1) {
+                perror("failed to reply!");
+                exit(errno);
+            }
+        }
+        else{
+            
+            continue;
         }
 
         if (strcmp(buffer, "done\n") == 0) {
             printf("user finished file transfer. Now quitting\n");
             break;
         }
-
-        char name[name_length] = {0};
 
         buffer_to_packet(&receiver, buffer, name);
 
@@ -83,35 +89,35 @@ int main(int argc, char* argv[]){
         ssize_t bytes_written;
         total_frag = receiver.total_frag;
 
-        char messages[256];
-
-        if (number_bytes == -1) {
-            perror("failed to reply!");
-            exit(errno);
-        }
-
         bytes_written = write(fd, receiver.filedata, receiver.size);
         if (bytes_written == -1) {
             perror("write failed!");
             exit(errno);
         }
-
-        char message[256];
+        
         for (int i = 1; i < total_frag; i++) {
+            memset(buffer, 0 , sizeof(buffer));
             number_bytes = recvfrom(socketfd, buffer, sizeof(buffer), 0, &from_addr, &from_size);
             if (number_bytes == -1) {
                 perror("receipt failed!");
                 exit(errno);
             }
 
-            memset(messages, 0, sizeof(messages));
-            sprintf(message, "Received %d packets out of %d, waiting for %d more", i + 1, total_frag,
-                    total_frag - i - 1);
 
-            number_bytes = sendto(socketfd, message, strlen(message) + 1, 0, &from_addr, from_size);
-            if (number_bytes == -1) {
-                perror("failed to reply!");
-                exit(errno);
+            rand_num = (rand() % 100) +1;
+            if(rand_num > 5){
+                memset(&response_packet, 0, sizeof(struct ack_packet));
+                memset(messages, 0, sizeof(messages));
+                fill_the_ack(&response_packet, total_frag, i+1, recevd);
+                ack_to_buffer(&response_packet, messages);
+                number_bytes = sendto(socketfd, messages, strlen(messages) + 1, 0, &from_addr, from_size);
+                if (number_bytes == -1) {
+                    perror("failed to reply!");
+                    exit(errno);
+                }
+            }
+            else{
+                continue;
             }
 
             buffer_to_packet(&receiver, buffer, name);

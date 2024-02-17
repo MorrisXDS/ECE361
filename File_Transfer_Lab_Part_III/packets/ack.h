@@ -12,7 +12,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
-#define copied 1
+#define recevd 1
 #define lost 0
 
 struct ack_packet{
