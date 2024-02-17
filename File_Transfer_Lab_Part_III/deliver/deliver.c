@@ -13,12 +13,12 @@ double time_interval = 0;
 
 double new_estimate_RTT(double sample_RTT, double old_estimated_RTT){
     double alpha = 0.125;
-    return (1-alpha)*old_estimated_RTT + alpha*sample_RTT;
+    return (1.0 - alpha) * old_estimated_RTT + alpha * sample_RTT;
 }
 
 double new_dev_RTT( double dev_RTT, double sample_RTT, double estimated_RTT){
     double beta = 0.25;
-    return (1-beta)*dev_RTT + beta* (double)fabs(sample_RTT - estimated_RTT);
+    return (1.0 - beta)*dev_RTT + beta* (double)fabs(sample_RTT - estimated_RTT);
 }
 
 // This deliver is based on the assumption that the local address
@@ -179,10 +179,16 @@ int main(int argc, char* argv[]){
                 estimated_RTT = RTT;
                 //assume the dev_RTT is 1/2 of the RTT
                 dev_RTT = RTT/2;
+                fprintf(stdout,"the actual RTT is %lf\n", RTT);
+                fprintf(stdout,"the estimated RTT is %lf\n", estimated_RTT);
+                fprintf(stdout,"the deviation in RTT is %lf\n", dev_RTT);
             }
             else{
                 estimated_RTT = new_estimate_RTT(RTT, estimated_RTT);
-                dev_RTT = new_dev_RTT(dev_RTT,RTT, estimated_RTT);
+                dev_RTT = new_dev_RTT(dev_RTT, RTT, estimated_RTT);
+                fprintf(stdout,"the actual RTT is %lf\n", RTT);
+                fprintf(stdout,"the estimated RTT is %lf\n", estimated_RTT);
+                fprintf(stdout,"the deviation in RTT is %lf\n", dev_RTT);
             }
             //time_out period formula
             time_interval = estimated_RTT + 4*dev_RTT;
