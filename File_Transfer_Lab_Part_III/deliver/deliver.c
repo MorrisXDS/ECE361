@@ -6,6 +6,9 @@
 #define null_padded_max_len (max_len-1)
 #define second_to_microsecond 1000000
 
+clock_t start_time;
+clock_t end_time;
+
 double time_interval = 0;
 
 double new_estimate_RTT(double sample_RTT, double old_estimated_RTT){
@@ -143,30 +146,33 @@ int main(int argc, char* argv[]){
 
             printf("packet #%d is being sent out\n", i+1);
             int data_size = convert_to_string(&sender, data, file_name);
-            number_bytes = sendto(socketfd, data, data_size, 0,
-                                  (struct sockaddr *)servinfo->ai_addr, sizeof(struct sockaddr));
-            clock_t start_time = clock();
-            
 
-            if(number_bytes == -1)
-                break;
 
-            number_bytes = recvfrom(socketfd, recipient_buffer, null_padded_max_len,
-                                    0, (struct sockaddr *)servinfo->ai_addr, &from_size);
-            clock_t end_time = clock();
-            if(number_bytes == -1){
-                if (errno == EAGAIN || errno == EWOULDBLOCK){
-                    fprintf(stderr,"no data received from the server assume packet %d has been lost!\n", i+1);
-                    fprintf(stderr,"resending packet %d\n", i+1);
-                    i--;
-                    continue;
-                }
-                else {
-                    perror("failed to receive!\n");
+
+            while(1){
+                number_bytes = sendto(socketfd, data, data_size, 0,
+                                      (struct sockaddr *)servinfo->ai_addr, sizeof(struct sockaddr));
+                if(number_bytes == -1)
                     exit(errno);
+                start_time = clock();
+                number_bytes = recvfrom(socketfd, recipient_buffer, null_padded_max_len,
+                                        0, (struct sockaddr *)servinfo->ai_addr, &from_size);
+                end_time = clock();
+                if(number_bytes == -1){
+                    if (errno == EAGAIN || errno == EWOULDBLOCK){
+                        fprintf(stderr,"no data received from the server assume packet %d has been lost!\n", i+1);
+                        fprintf(stderr,"resending packet %d\n", i+1);
+                        continue;
+                    }
+                    else {
+                        perror("failed to receive!\n");
+                        exit(errno);
+                    }
+                }
+                else{
+                    break;
                 }
             }
-
 
             double RTT = ((double)end_time - (double)start_time)/CLOCKS_PER_SEC;
             if(i == 0 ){
@@ -181,23 +187,28 @@ int main(int argc, char* argv[]){
             //time_out period formula
             time_interval = estimated_RTT + 4*dev_RTT;
 
-            printf("Round Trip Time for %d: %f\n", i+1, RTT);
+            //printf("Round Trip Time for %d: %f\n", i+1, RTT);
             recipient_buffer[number_bytes] = '\n';
-            printf("the server replied: %s \n", recipient_buffer);
-        }
-
-        if (number_bytes == -1){
-            printf("Error: failed!\n");
-            exit(errno);
+            //printf("the server replied: %s \n", recipient_buffer);
         }
 
         char* goodbye_msg = malloc(sizeof(char)*max_len);
-        number_bytes = recvfrom(socketfd, goodbye_msg, null_padded_max_len,
-                                0, (struct sockaddr *)servinfo->ai_addr, &from_size);
 
-        if(number_bytes == -1){
-            perror("failed to receive!\n");
-            exit(0);
+        while (1){
+            number_bytes = recvfrom(socketfd, goodbye_msg, null_padded_max_len,
+                                    0, (struct sockaddr *)servinfo->ai_addr, &from_size);
+
+            if(number_bytes == -1){
+                if (errno == EAGAIN || errno == EWOULDBLOCK){
+                    fprintf(stderr,"keep waiting for the last packet\n");
+                    continue;
+                }
+                else {
+                    perror("failed to receive!\n");
+                    exit(errno);
+                }
+            }
+            break;
         }
 
         printf("GoodBye Message from the Server: %s",goodbye_msg);

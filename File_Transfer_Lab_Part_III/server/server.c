@@ -14,7 +14,8 @@ int main(int argc, char* argv[]){
     }
 
     // cited from page 38 "Beej's Guide to Network Programming", modified
-    struct addrinfo hints, *servinfo, *p; int rv;
+    struct addrinfo hints, *servinfo;
+    int rv;
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_INET; // IPv4
     hints.ai_socktype = SOCK_DGRAM;
@@ -41,7 +42,7 @@ int main(int argc, char* argv[]){
     socklen_t from_size;
     from_size = sizeof (from_addr);
     srand(time(NULL));
-    
+
     while(1) {
         char buffer[sending_buffer_size] = {0};
         ssize_t number_bytes = recvfrom(socketfd, buffer, sending_buffer_size, 0, &from_addr, &from_size);
@@ -67,7 +68,6 @@ int main(int argc, char* argv[]){
             }
         }
         else{
-            
             continue;
         }
 
@@ -94,7 +94,7 @@ int main(int argc, char* argv[]){
             perror("write failed!");
             exit(errno);
         }
-        
+
         for (int i = 1; i < total_frag; i++) {
             memset(buffer, 0 , sizeof(buffer));
             number_bytes = recvfrom(socketfd, buffer, sizeof(buffer), 0, &from_addr, &from_size);
@@ -102,12 +102,12 @@ int main(int argc, char* argv[]){
                 perror("receipt failed!");
                 exit(errno);
             }
-
+            memset(&response_packet, 0, sizeof(struct ack_packet));
+            memset(messages, 0, sizeof(messages));
 
             rand_num = (rand() % 100) +1;
             if(rand_num > 5){
-                memset(&response_packet, 0, sizeof(struct ack_packet));
-                memset(messages, 0, sizeof(messages));
+                fprintf(stdout, "getting packet no.%d\n", i+1);
                 fill_the_ack(&response_packet, total_frag, i+1, recevd);
                 ack_to_buffer(&response_packet, messages);
                 number_bytes = sendto(socketfd, messages, strlen(messages) + 1, 0, &from_addr, from_size);
@@ -115,21 +115,24 @@ int main(int argc, char* argv[]){
                     perror("failed to reply!");
                     exit(errno);
                 }
+                buffer_to_packet(&receiver, buffer, name);
+                bytes_written = write(fd, receiver.filedata, receiver.size);
+                if (bytes_written == -1) {
+                    perror("write failed!");
+                    exit(errno);
+                }
             }
             else{
-                continue;
-            }
 
-            buffer_to_packet(&receiver, buffer, name);
-            bytes_written = write(fd, receiver.filedata, receiver.size);
-            if (bytes_written == -1) {
-                perror("write failed!");
-                exit(errno);
+                fprintf(stdout, "packet No.%d  loss happened!\n",i+1);
+                i--;
+                continue;
             }
         }
 
         char end_of_file[256];
         sprintf(end_of_file, "End of File Transfer for %s.\n", name);
+        fprintf(stdout, "%s", end_of_file);
 
         number_bytes = sendto(socketfd, end_of_file,
                               strlen(end_of_file) + 1, 0, &from_addr, from_size);
