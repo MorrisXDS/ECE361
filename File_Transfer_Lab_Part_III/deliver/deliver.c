@@ -4,6 +4,19 @@
 
 #define max_len 256
 #define null_padded_max_len (max_len-1)
+#define second_to_microsecond 1000000
+
+double time_interval = 0;
+
+double new_estimate_RTT(double sample_RTT, double old_estimated_RTT){
+    double alpha = 0.125;
+    return (1-alpha)*old_estimated_RTT + alpha*sample_RTT;
+}
+
+double new_dev_RTT( double dev_RTT, double sample_RTT, double estimated_RTT){
+    double beta = 0.25;
+    return (1-beta)*dev_RTT + beta* (double)fabs(sample_RTT - estimated_RTT);
+}
 
 // This deliver is based on the assumption that the local address
 // will always be IPv4
@@ -35,6 +48,8 @@ int main(int argc, char* argv[]){
         char ftp[4];
         char file_name[256];
         char terminal_buffer[1024];
+        double estimated_RTT = 0;
+        double dev_RTT = 0;
 
         char * temp = fgets(terminal_buffer, 1023, stdin);
         if (temp == NULL){
@@ -60,7 +75,7 @@ int main(int argc, char* argv[]){
         }
         strcpy(file_name, token);
         if (strtok(NULL, " \n") != NULL){
-            printf("two many arguments!\n");
+            printf("too many arguments!\n");
             continue;
         }
 
@@ -95,6 +110,7 @@ int main(int argc, char* argv[]){
         char data[sending_buffer_size];
 
         for (int i = 0; i < total_frag; ++i) {
+            struct timeval timeout = {0};
             memset(buffer, 0, file_frag_size);
             memset(&sender, 0, sizeof(struct packet));
             ssize_t bytes_read = read(fd, buffer, file_frag_size);
@@ -109,6 +125,22 @@ int main(int argc, char* argv[]){
             write_packets(&sender, total_frag, i+1,
                           bytes_read, file_name, buffer);
             memset(data, 0, sending_buffer_size);
+
+
+            if (i == 0){
+                timeout.tv_sec = 1;
+                timeout.tv_usec = 0;
+            }
+            else{
+                timeout.tv_sec = (int)time_interval;
+                timeout.tv_usec = (int)((time_interval - (int)time_interval)* second_to_microsecond);
+            }
+
+            if(setsockopt(socketfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0){
+                perror("failed to set the timeout!\n");
+                exit(errno);
+            }
+
             printf("packet #%d is being sent out\n", i+1);
             int data_size = convert_to_string(&sender, data, file_name);
             number_bytes = sendto(socketfd, data, data_size, 0,
@@ -122,16 +154,36 @@ int main(int argc, char* argv[]){
             number_bytes = recvfrom(socketfd, recipient_buffer, null_padded_max_len,
                                     0, (struct sockaddr *)servinfo->ai_addr, &from_size);
             clock_t end_time = clock();
-            if(number_bytes == -1)
-                break;
-            
-            
-            double time_taken = ((double)end_time - (double)start_time)/CLOCKS_PER_SEC;
-            printf("Round Trip Time is %d: %f\n", i+1, time_taken);
+            if(number_bytes == -1){
+                if (errno == EAGAIN || errno == EWOULDBLOCK){
+                    fprintf(stderr,"no data received from the server assume packet %d has been lost!\n", i+1);
+                    fprintf(stderr,"resending packet %d\n", i+1);
+                    i--;
+                    continue;
+                }
+                else {
+                    perror("failed to receive!\n");
+                    exit(errno);
+                }
+            }
+
+
+            double RTT = ((double)end_time - (double)start_time)/CLOCKS_PER_SEC;
+            if(i == 0 ){
+                estimated_RTT = RTT;
+                //assume the dev_RTT is 1/2 of the RTT
+                dev_RTT = RTT/2;
+            }
+            else{
+                estimated_RTT = new_estimate_RTT(RTT, estimated_RTT);
+                dev_RTT = new_dev_RTT(dev_RTT,RTT, estimated_RTT);
+            }
+            //time_out period formula
+            time_interval = estimated_RTT + 4*dev_RTT;
+
+            printf("Round Trip Time for %d: %f\n", i+1, RTT);
             recipient_buffer[number_bytes] = '\n';
             printf("the server replied: %s \n", recipient_buffer);
-
-            if (strcmp(recipient_buffer,"packet missing!") == 0) break;
         }
 
         if (number_bytes == -1){
