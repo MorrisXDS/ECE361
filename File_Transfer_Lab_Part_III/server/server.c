@@ -9,7 +9,7 @@ unsigned int total_frag = 0;
 // will always be IPv4
 int main(int argc, char* argv[]){
     if (argc != 2){
-        printf("usage: server <port number>\n");
+        fprintf(stderr, "usage: server <port number>\n");
         exit(1);
     }
 
@@ -28,13 +28,13 @@ int main(int argc, char* argv[]){
 
     int socketfd = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol);
     if (socketfd == -1){
-        printf("Error: failed to create a select socket!\n");
+        fprintf(stderr, "Error: failed to create a select socket!\n");
         exit(errno);
     }
 
     int check = bind(socketfd, (struct sockaddr *)(servinfo->ai_addr), (socklen_t) (servinfo->ai_addrlen));
     if (check == -1){
-        printf("Error: failed to bind a select socket!\n");
+        fprintf(stderr, "Error: failed to bind a select socket!\n");
         exit(errno);
     }
 
@@ -54,7 +54,7 @@ int main(int argc, char* argv[]){
         int rand_num = 0;
         struct ack_packet response_packet = {0};
         char name[name_length] = {0};
-        printf("server starts receiving ...\n");
+        fprintf(stdout, "server starts receiving ...\n");
         struct packet receiver = {0};
         rand_num = (rand() % 100) +1;
 
@@ -72,7 +72,7 @@ int main(int argc, char* argv[]){
         }
 
         if (strcmp(buffer, "done\n") == 0) {
-            printf("user finished file transfer. Now quitting\n");
+            fprintf(stdout, "user finished file transfer. Now quitting\n");
             break;
         }
 
@@ -124,7 +124,7 @@ int main(int argc, char* argv[]){
             }
             else{
 
-                fprintf(stdout, "packet No.%d  loss happened!\n",i+1);
+                fprintf(stderr, "packet No.%d  loss happened!\n",i+1);
                 i--;
                 continue;
             }
