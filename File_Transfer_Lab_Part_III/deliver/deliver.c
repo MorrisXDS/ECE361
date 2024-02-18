@@ -71,6 +71,7 @@ int main(int argc, char* argv[]){
         char* token = strtok(terminal_buffer, " \n");
         if (token == NULL){
             fprintf(stderr, "No input. Please try again!");
+            continue;
         }
         strcpy(ftp, token);
         if(strcmp(ftp,"ftp") != 0) {
