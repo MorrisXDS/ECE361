@@ -48,9 +48,9 @@ int main(int argc, char* argv[]){
 
     while(1){
         printf("Hello, Please transfer the file in the following format\nftp filename: ");
-        char ftp[4];
-        char file_name[256];
-        char terminal_buffer[1024];
+        char ftp[256] = {0};
+        char file_name[256] =  {0};
+        char terminal_buffer[1024] = {0};
         double estimated_RTT = 0;
         double dev_RTT = 0;
 
@@ -60,8 +60,7 @@ int main(int argc, char* argv[]){
             memset(terminal_buffer, 0, 1024);
             continue;
         }
-
-        printf("terminal buffer is %s\n", terminal_buffer);
+        
         if (strcmp(terminal_buffer, "done\n") == 0){
             printf("Bye for now!\n");
             sendto(socketfd, terminal_buffer, strlen(terminal_buffer), 0,
@@ -70,7 +69,15 @@ int main(int argc, char* argv[]){
         }
 
         char* token = strtok(terminal_buffer, " \n");
+        if (token == NULL){
+            printf("No input. Please try again!");
+        }
         strcpy(ftp, token);
+        if(strcmp(ftp,"ftp") != 0) {
+            printf("Incorrect Protocol! Please re-start and try again\n");
+            continue;
+        }
+
         token = strtok(NULL, " \n");
         if (token == NULL){
             printf("file name missing!\n");
@@ -79,11 +86,6 @@ int main(int argc, char* argv[]){
         strcpy(file_name, token);
         if (strtok(NULL, " \n") != NULL){
             printf("too many arguments!\n");
-            continue;
-        }
-
-        if(strcmp(ftp,"ftp") != 0) {
-            printf("Incorrect Protocol! Please re-start and try again\n");
             continue;
         }
 
@@ -146,6 +148,7 @@ int main(int argc, char* argv[]){
 
             printf("packet #%d is being sent out\n", i+1);
             int data_size = convert_to_string(&sender, data, file_name);
+            printf("check point 1\n");
 
 
 
