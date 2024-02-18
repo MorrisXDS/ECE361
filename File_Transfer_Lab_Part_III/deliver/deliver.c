@@ -25,7 +25,7 @@ double new_dev_RTT( double dev_RTT, double sample_RTT, double estimated_RTT){
 // will always be IPv4
 int main(int argc, char* argv[]){
     if(argc != 3){
-        printf("usage: deliver <hostname> <host port>\n");
+        fprintf(stderr, "usage: deliver <hostname> <host port>\n");
         exit(3);
     }
 
@@ -42,12 +42,12 @@ int main(int argc, char* argv[]){
 
     int socketfd = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol);
     if (socketfd == -1){
-        printf("Error: failed to create a select socket!\n");
+        fprintf(stderr, "Error: failed to create a select socket!\n");
         exit(errno);
     }
 
     while(1){
-        printf("Hello, Please transfer the file in the following format\nftp filename: ");
+        fprintf(stdout, "Hello, Please transfer the file in the following format\nftp filename: ");
         char ftp[256] = {0};
         char file_name[256] =  {0};
         char terminal_buffer[1024] = {0};
@@ -60,9 +60,9 @@ int main(int argc, char* argv[]){
             memset(terminal_buffer, 0, 1024);
             continue;
         }
-        
+
         if (strcmp(terminal_buffer, "done\n") == 0){
-            printf("Bye for now!\n");
+            fprintf(stdout, "Bye for now!\n");
             sendto(socketfd, terminal_buffer, strlen(terminal_buffer), 0,
                    (struct sockaddr *)servinfo->ai_addr, sizeof(struct sockaddr));
             break;
@@ -70,28 +70,28 @@ int main(int argc, char* argv[]){
 
         char* token = strtok(terminal_buffer, " \n");
         if (token == NULL){
-            printf("No input. Please try again!");
+            fprintf(stderr, "No input. Please try again!");
         }
         strcpy(ftp, token);
         if(strcmp(ftp,"ftp") != 0) {
-            printf("Incorrect Protocol! Please re-start and try again\n");
+            fprintf(stderr, "Incorrect Protocol! Please re-start and try again\n");
             continue;
         }
 
         token = strtok(NULL, " \n");
         if (token == NULL){
-            printf("file name missing!\n");
+            fprintf(stderr, "file name missing!\n");
             continue;
         }
         strcpy(file_name, token);
         if (strtok(NULL, " \n") != NULL){
-            printf("too many arguments!\n");
+            fprintf(stderr, "too many arguments!\n");
             continue;
         }
 
         int fd;
         if((fd = open(file_name,O_RDONLY)) == -1){
-            printf("The file \"%s\" does not exist!\n", file_name);
+            fprintf(stderr, "The file \"%s\" does not exist!\n", file_name);
             continue;
         }
 
@@ -142,15 +142,12 @@ int main(int argc, char* argv[]){
             }
 
             if(setsockopt(socketfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0){
-                perror("failed to set the timeout!\n");
+                fprintf(stderr, "failed to set the timeout!\n");
                 exit(errno);
             }
 
-            printf("packet #%d is being sent out\n", i+1);
+            fprintf(stdout, "packet #%d is being sent out\n", i+1);
             int data_size = convert_to_string(&sender, data, file_name);
-            printf("check point 1\n");
-
-
 
             while(1){
                 number_bytes = sendto(socketfd, data, data_size, 0,
@@ -163,7 +160,7 @@ int main(int argc, char* argv[]){
                 end_time = clock();
                 if(number_bytes == -1){
                     if (errno == EAGAIN || errno == EWOULDBLOCK){
-                        fprintf(stderr,"no data received from the server assume packet %d has been lost!\n", i+1);
+                        fprintf(stderr,"no data received from the server. Assume packet %d has been lost!\n", i+1);
                         fprintf(stderr,"resending packet %d\n", i+1);
                         continue;
                     }
@@ -182,23 +179,23 @@ int main(int argc, char* argv[]){
                 estimated_RTT = RTT;
                 //assume the dev_RTT is 1/2 of the RTT
                 dev_RTT = RTT/2;
-                fprintf(stdout,"the actual RTT is %lf\n", RTT);
-                fprintf(stdout,"the estimated RTT is %lf\n", estimated_RTT);
-                fprintf(stdout,"the deviation in RTT is %lf\n", dev_RTT);
+//                fprintf(stdout,"the actual RTT is %lf\n", RTT);
+//                fprintf(stdout,"the estimated RTT is %lf\n", estimated_RTT);
+//                fprintf(stdout,"the deviation in RTT is %lf\n", dev_RTT);
             }
             else{
                 estimated_RTT = new_estimate_RTT(RTT, estimated_RTT);
                 dev_RTT = new_dev_RTT(dev_RTT, RTT, estimated_RTT);
-                fprintf(stdout,"the actual RTT is %lf\n", RTT);
-                fprintf(stdout,"the estimated RTT is %lf\n", estimated_RTT);
-                fprintf(stdout,"the deviation in RTT is %lf\n", dev_RTT);
+//                fprintf(stdout,"the actual RTT is %lf\n", RTT);
+//                fprintf(stdout,"the estimated RTT is %lf\n", estimated_RTT);
+//                fprintf(stdout,"the deviation in RTT is %lf\n", dev_RTT);
             }
             //time_out period formula
             time_interval = estimated_RTT + 4*dev_RTT;
 
-            //printf("Round Trip Time for %d: %f\n", i+1, RTT);
+            //fprintf(stdout, "Round Trip Time for %d: %f\n", i+1, RTT);
             recipient_buffer[number_bytes] = '\n';
-            //printf("the server replied: %s \n", recipient_buffer);
+            //fprintf(stdout, "the server replied: %s \n", recipient_buffer);
         }
 
         char* goodbye_msg = malloc(sizeof(char)*max_len);
@@ -220,10 +217,10 @@ int main(int argc, char* argv[]){
             break;
         }
 
-        printf("GoodBye Message from the Server: %s",goodbye_msg);
+        fprintf(stdout, "GoodBye Message from the Server: %s",goodbye_msg);
 
         free(goodbye_msg);
-        printf("\"%s\" was sent successfully!\n", file_name);
+        fprintf(stdout, "\"%s\" was sent successfully!\n", file_name);
     }
     close(socketfd);
     freeaddrinfo(servinfo);
