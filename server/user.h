@@ -1,22 +1,12 @@
 //
 // Created by MorrisSun on 2024-01-23.
 //
-
 #ifndef USER_H
 #define USER_H
 #include "../message/message.h"
 #include <pthread.h>
 
-
-#define user_t struct user
-#define user_database struct user_list
-
 #define MAX_SESSION_COUNT 10
-
-
-
-
-
 
 #define USER_CREATE_SUCCESS 1
 #define USER_ALREADY_EXIST 2
@@ -36,7 +26,7 @@
 #define USER_IN_DIFFERENT_SESSION (-10)
 #define TARGET_IS_ADMIN (-11)
 
-user_t{
+typedef struct user{
     unsigned char username[MAX_NAME];
     unsigned char password[MAX_PASSWORD_LENGTH];
     char session_id[MAX_SESSION_LENGTH];
@@ -46,13 +36,13 @@ user_t{
     unsigned int port;
     int socket_fd;
     char role;
-};
+} user_t;
 
-user_database{
+typedef struct user_list{
     user_t * user_list;
     unsigned int count;
     unsigned int capacity;
-};
+} user_database;
 
 
 user_database* user_database_init();

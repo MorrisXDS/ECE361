@@ -64,16 +64,15 @@
 #define MAX_SESSION_LENGTH 20
 #define MAX_DATA 1000
 #define ACC_BUFFER_SIZE 1500
-#define message_t struct message
 
 #define maximum_buffer_size 1200
 
-struct message {
+typedef struct message {
     unsigned int type;
     unsigned int size;
     unsigned char source[MAX_NAME];
     unsigned char data[MAX_DATA];
-};
+} message_t;
 
 void fill_message(message_t * message, unsigned int type,
                   unsigned int size, char * source, char * data);
