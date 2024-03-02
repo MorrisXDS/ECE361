@@ -20,7 +20,7 @@
 #define THREAD_CAPACITY 10
 #define MAX_PASSWORD 17
 #define BACKLOG 10
-#define database_path "/homes/s/sunxia72/text_conferencing_lab/server/database.txt"
+#define database_path "./database.txt"
 
 int set_up_database();
 int verify_login(unsigned char * username, unsigned char * password);
