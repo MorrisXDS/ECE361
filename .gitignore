@@ -6,8 +6,7 @@ File_Transfer_Lab_Part_II/deliver.o
 File_Transfer_Lab_Part_II/server.o
 File_Transfer_Lab_Part_II/a2.tar.gz
 File_Transfer_Lab_Part_III/a3.tar.gz
-*/*.o
-*/client
-*/server
-server/database.txt
-.vscode
+Text_Conferencing_Lab_Part_I/*/*.o
+Text_Conferencing_Lab_Part_I/client/client
+Text_Conferencing_Lab_Part_I/server/server
+Text_Conferencing_Lab_Part_I/.vscode
