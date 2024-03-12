@@ -74,12 +74,12 @@ typedef struct message {
     unsigned char data[MAX_DATA];
 } message_t;
 
-void fill_message(message_t * message, unsigned int type,
-                  unsigned int size, char * source, char * data);
-int message_to_string(message_t * message, unsigned int message_data_size, char * buffer);
-void string_to_message(message_t * message, const char * buffer);
-int send_message(const int * socket_fd,unsigned int message_size, char * message);
-int receive_message(const int * socket_fd, char * message);
-void fill_and_send_message(const int * socket_fd, unsigned int type, char * source, char * data);
+void fill_message(message_t* message, unsigned int type,
+    unsigned int size, char* source, char* data);
+int message_to_string(message_t* message, unsigned int message_data_size, char* buffer);
+void string_to_message(message_t* message, const char* buffer);
+int send_message(const int* socket_fd, unsigned int message_size, char* message);
+int receive_message(const int* socket_fd, char* message);
+void fill_and_send_message(const int* socket_fd, unsigned int type, char* source, char* data);
 
 #endif
