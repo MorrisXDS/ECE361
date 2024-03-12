@@ -23,19 +23,19 @@
 #define database_path "./database.txt"
 
 int set_up_database();
-int verify_login(unsigned char * username, unsigned char * password);
+int verify_login(unsigned char* username, unsigned char* password);
 char* select_login_message(int index);
-void user_login(char * username, unsigned char status, const int *socket_fd);
+void user_login(char* username, unsigned char status, const int* socket_fd);
 void server_side_user_exit(char* username);
-void server_side_session_join(char * username, char * session_id);
-void server_side_session_leave(char * username);
-void server_side_session_create(char * username, char * session_id);
-void* connection_handler(void * accept_fd);
+void server_side_session_join(char* username, char* session_id);
+void server_side_session_leave(char* username);
+void server_side_session_create(char* username, char* session_id);
+void* connection_handler(void* accept_fd);
 char* session_response_message(int value);
-void send_message_in_a_session(message_t * msg, char * session_id);
-char* get_user_ip_address_and_port(const int * socket_fd,  unsigned int * port);
+void send_message_in_a_session(message_t* msg, char* session_id);
+char* get_user_ip_address_and_port(const int* socket_fd, unsigned int* port);
 void write_to_database(int user_index);
-int user_registration(char * username, char * password, const int  *socket_fd);
+int user_registration(char* username, char* password, const int* socket_fd);
 char* user_registration_message(int value);
 void server_side_kick_user(char* doer, char* target);
 void server_side_promote_user(char* sender, char* target);
